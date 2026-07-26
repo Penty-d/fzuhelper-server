@@ -19,33 +19,26 @@ package academic
 import (
 	"context"
 
-	"github.com/bytedance/sonic"
-
+	"github.com/west2-online/fzuhelper-server/pkg/cache/internal/codec"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/jwch"
 	"github.com/west2-online/yjsy"
 )
 
-func (c *CacheAcademic) GetScoresCache(ctx context.Context, key string) (scores []*jwch.Mark, err error) {
-	data, err := c.client.Get(ctx, key).Bytes()
+// GetScoresCache 获取本科生成绩缓存; key 不存在时返回 found=false 且不视为错误
+func (c *CacheAcademic) GetScoresCache(ctx context.Context, key string) ([]*jwch.Mark, bool, error) {
+	scores, found, err := codec.GetJSON[[]*jwch.Mark](ctx, c.client, key)
 	if err != nil {
-		return nil, errno.Errorf(errno.InternalJSONErrorCode, "dal.GetScoresCache: Get scores info failed: %v", err)
+		return nil, false, errno.Errorf(errno.InternalJSONErrorCode, "dal.GetScoresCache: Get scores info failed: %v", err)
 	}
-	err = sonic.Unmarshal(data, &scores)
-	if err != nil {
-		return nil, errno.Errorf(errno.InternalJSONErrorCode, "dal.GetScoresCache: Unmarshal scores info failed: %v", err)
-	}
-	return scores, nil
+	return scores, found, nil
 }
 
-func (c *CacheAcademic) GetScoresCacheYjsy(ctx context.Context, key string) (scores []*yjsy.Mark, err error) {
-	data, err := c.client.Get(ctx, key).Bytes()
+// GetScoresCacheYjsy 获取研究生成绩缓存; key 不存在时返回 found=false 且不视为错误
+func (c *CacheAcademic) GetScoresCacheYjsy(ctx context.Context, key string) ([]*yjsy.Mark, bool, error) {
+	scores, found, err := codec.GetJSON[[]*yjsy.Mark](ctx, c.client, key)
 	if err != nil {
-		return nil, errno.Errorf(errno.InternalJSONErrorCode, "dal.GetScoresCacheYjsy: Get scores info failed: %v", err)
+		return nil, false, errno.Errorf(errno.InternalJSONErrorCode, "dal.GetScoresCacheYjsy: Get scores info failed: %v", err)
 	}
-	err = sonic.Unmarshal(data, &scores)
-	if err != nil {
-		return nil, errno.Errorf(errno.InternalJSONErrorCode, "dal.GetScoresCacheYjsy: Unmarshal scores info failed: %v", err)
-	}
-	return scores, nil
+	return scores, found, nil
 }

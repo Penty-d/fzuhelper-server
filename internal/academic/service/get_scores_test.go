@@ -50,26 +50,6 @@ func init() {
 
 func TestAcademicService_GetScores(t *testing.T) {
 	Convey("GetScores", t, func() {
-		Convey("should return error when user is not logged in", func() {
-			// Given: 未登录的用户上下文
-			ctx := context.Background()
-			mockClientSet := &base.ClientSet{
-				CacheClient: &cache.Cache{},
-			}
-			service := NewAcademicService(ctx, mockClientSet, &taskqueue.BaseTaskQueue{})
-
-			// When: 尝试获取成绩信息
-			result, err := service.GetScores(&loginmodel.LoginData{
-				Id:      "test_student_id",
-				Cookies: "test_session=abc123",
-			})
-
-			// Then: 应该返回登录错误
-			So(result, ShouldBeNil)
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "Get login data fail")
-		})
-
 		Convey("should return scores from cache when cache exists", func() {
 			// Given: 已登录用户且缓存中有成绩数据
 			testLoginData := &loginmodel.LoginData{
@@ -92,13 +72,9 @@ func TestAcademicService_GetScores(t *testing.T) {
 				},
 			}
 
-			// Mock 缓存存在
-			cacheExistsPatch := mockey.Mock((*cache.Cache).IsKeyExist).Return(true).Build()
-			defer cacheExistsPatch.UnPatch()
-
-			// Mock 从缓存获取成绩
+			// Mock 缓存命中并返回成绩(getter 自带未命中判定, 通过 found 返回值区分)
 			getCachePatch := mockey.Mock((*academicCache.CacheAcademic).GetScoresCache).Return(
-				expectedScores, nil,
+				expectedScores, true, nil,
 			).Build()
 			defer getCachePatch.UnPatch()
 
@@ -128,13 +104,9 @@ func TestAcademicService_GetScores(t *testing.T) {
 				Cookies: "ASP.NET_SessionId=lzs1t42mpkml4ag2jrxvib4z",
 			}
 
-			// Mock 缓存存在
-			cacheExistsPatch := mockey.Mock((*cache.Cache).IsKeyExist).Return(true).Build()
-			defer cacheExistsPatch.UnPatch()
-
 			// Mock 缓存读取失败
 			getCachePatch := mockey.Mock((*academicCache.CacheAcademic).GetScoresCache).Return(
-				nil, fmt.Errorf("redis connection failed"),
+				nil, false, fmt.Errorf("redis connection failed"),
 			).Build()
 			defer getCachePatch.UnPatch()
 
@@ -169,9 +141,11 @@ func TestAcademicService_GetScores(t *testing.T) {
 				},
 			}
 
-			// Mock 缓存不存在
-			cacheExistsPatch := mockey.Mock((*cache.Cache).IsKeyExist).Return(false).Build()
-			defer cacheExistsPatch.UnPatch()
+			// Mock 缓存未命中(getter 自带未命中判定, found=false 表示 miss)
+			getCachePatch := mockey.Mock((*academicCache.CacheAcademic).GetScoresCache).Return(
+				nil, false, nil,
+			).Build()
+			defer getCachePatch.UnPatch()
 
 			// Mock jwch 获取成绩成功
 			getMarksPatch := mockey.Mock((*jwch.Student).GetMarks).Return(
@@ -214,9 +188,11 @@ func TestAcademicService_GetScores(t *testing.T) {
 				Cookies: "ASP.NET_SessionId=lzs1t42mpkml4ag2jrxvib4z",
 			}
 
-			// Mock 缓存不存在
-			cacheExistsPatch := mockey.Mock((*cache.Cache).IsKeyExist).Return(false).Build()
-			defer cacheExistsPatch.UnPatch()
+			// Mock 缓存未命中(getter 自带未命中判定, found=false 表示 miss)
+			getCachePatch := mockey.Mock((*academicCache.CacheAcademic).GetScoresCache).Return(
+				nil, false, nil,
+			).Build()
+			defer getCachePatch.UnPatch()
 
 			// Mock jwch 获取成绩失败
 			getMarksPatch := mockey.Mock((*jwch.Student).GetMarks).Return(
@@ -678,12 +654,8 @@ func TestAcademicService_GetScoresYjsy(t *testing.T) {
 				Cookies: "test_cookie",
 			}
 
-			// Mock 缓存存在
-			isKeyExistPatch := mockey.Mock((*cache.Cache).IsKeyExist).Return(true).Build()
-			defer isKeyExistPatch.UnPatch()
-
-			// Mock 获取缓存成功
-			getCachePatch := mockey.Mock((*academicCache.CacheAcademic).GetScoresCacheYjsy).Return(testScores, nil).Build()
+			// Mock 缓存命中并返回成绩(getter 自带未命中判定, 通过 found 返回值区分)
+			getCachePatch := mockey.Mock((*academicCache.CacheAcademic).GetScoresCacheYjsy).Return(testScores, true, nil).Build()
 			defer getCachePatch.UnPatch()
 
 			ctx := context.Background()
@@ -709,12 +681,8 @@ func TestAcademicService_GetScoresYjsy(t *testing.T) {
 				Cookies: "test_cookie",
 			}
 
-			// Mock 缓存存在
-			isKeyExistPatch := mockey.Mock((*cache.Cache).IsKeyExist).Return(true).Build()
-			defer isKeyExistPatch.UnPatch()
-
 			// Mock 获取缓存失败
-			getCachePatch := mockey.Mock((*academicCache.CacheAcademic).GetScoresCacheYjsy).Return(nil, fmt.Errorf("cache error")).Build()
+			getCachePatch := mockey.Mock((*academicCache.CacheAcademic).GetScoresCacheYjsy).Return(nil, false, fmt.Errorf("cache error")).Build()
 			defer getCachePatch.UnPatch()
 
 			ctx := context.Background()
@@ -750,9 +718,9 @@ func TestAcademicService_GetScoresYjsy(t *testing.T) {
 				Cookies: "test_cookie",
 			}
 
-			// Mock 缓存不存在
-			isKeyExistPatch := mockey.Mock((*cache.Cache).IsKeyExist).Return(false).Build()
-			defer isKeyExistPatch.UnPatch()
+			// Mock 缓存未命中(getter 自带未命中判定, found=false 表示 miss)
+			getCachePatch := mockey.Mock((*academicCache.CacheAcademic).GetScoresCacheYjsy).Return(nil, false, nil).Build()
+			defer getCachePatch.UnPatch()
 
 			withLoginDataPatch := mockey.Mock((*yjsy.Student).WithLoginData).Return(yjsy.NewStudent()).Build()
 			defer withLoginDataPatch.UnPatch()
@@ -787,9 +755,9 @@ func TestAcademicService_GetScoresYjsy(t *testing.T) {
 				Cookies: "test_cookie",
 			}
 
-			// Mock 缓存不存在
-			isKeyExistPatch := mockey.Mock((*cache.Cache).IsKeyExist).Return(false).Build()
-			defer isKeyExistPatch.UnPatch()
+			// Mock 缓存未命中(getter 自带未命中判定, found=false 表示 miss)
+			getCachePatch := mockey.Mock((*academicCache.CacheAcademic).GetScoresCacheYjsy).Return(nil, false, nil).Build()
+			defer getCachePatch.UnPatch()
 
 			withLoginDataPatch := mockey.Mock((*yjsy.Student).WithLoginData).Return(yjsy.NewStudent()).Build()
 			defer withLoginDataPatch.UnPatch()

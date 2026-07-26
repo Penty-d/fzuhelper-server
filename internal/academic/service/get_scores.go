@@ -18,6 +18,7 @@ package service
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -38,55 +39,51 @@ import (
 )
 
 func (s *AcademicService) GetScores(loginData *loginmodel.LoginData) ([]*jwch.Mark, error) {
-	key := fmt.Sprintf("scores:%s", context.ExtractIDFromLoginData(loginData))
-	loginData, err := context.GetLoginData(s.ctx)
 	stuId := context.ExtractIDFromLoginData(loginData)
-	if err != nil {
-		return nil, errno.NewErrNo(errno.AuthErrorCode, fmt.Sprintf("service.GetScores: Get login data fail %v", err))
-	}
+	key := fmt.Sprintf(constants.ScoresKeyFormat, stuId)
 
-	if ok := s.cache.IsKeyExist(s.ctx, key); ok {
-		scores, err := s.cache.Academic.GetScoresCache(s.ctx, key)
-		if err != nil {
-			return nil, errno.NewErrNo(errno.InternalRedisErrorCode, fmt.Sprintf("service.GetScores: Get scores info from redis error %v", err))
-		}
-		return scores, nil
-	} else {
-		stu := jwch.NewStudent().WithLoginData(loginData.Id, utils.ParseCookies(loginData.Cookies))
-		scores, err := stu.GetMarks()
-		if err = base.HandleJwchError(err); err != nil {
-			return nil, fmt.Errorf("service.GetScores: Get scores info fail %w", err)
-		}
-		s.taskQueue.Add(key, taskqueue.QueueTask{Execute: func() error {
-			return cache.SetSliceCache(s.cache, s.ctx, key, scores, constants.AcademicScoresExpire, "Academic.SetScores")
-		}})
-		s.taskQueue.Add(stuId, taskqueue.QueueTask{Execute: func() error {
-			return s.checkScoreChange(stuId, scores)
-		}})
-		return scores, nil
+	// getter 自带未命中判定, 单次 round-trip 完成读缓存; 过期竞态会自然回源而不是报错
+	cachedScores, ok, err := s.cache.Academic.GetScoresCache(s.ctx, key)
+	if err != nil {
+		return nil, errno.NewErrNo(errno.InternalRedisErrorCode, fmt.Sprintf("service.GetScores: Get scores info from redis error %v", err))
 	}
+	if ok {
+		return cachedScores, nil
+	}
+	stu := jwch.NewStudent().WithLoginData(loginData.Id, utils.ParseCookies(loginData.Cookies))
+	scores, err := stu.GetMarks()
+	if err = base.HandleJwchError(err); err != nil {
+		return nil, fmt.Errorf("service.GetScores: Get scores info fail %w", err)
+	}
+	s.taskQueue.Add(key, taskqueue.QueueTask{Execute: func() error {
+		return cache.SetSliceCache(s.cache, s.ctx, key, scores, constants.AcademicScoresExpire, "Academic.SetScores")
+	}})
+	s.taskQueue.Add(stuId, taskqueue.QueueTask{Execute: func() error {
+		return s.checkScoreChange(stuId, scores)
+	}})
+	return scores, nil
 }
 
 func (s *AcademicService) GetScoresYjsy(loginData *loginmodel.LoginData) ([]*yjsy.Mark, error) {
-	key := fmt.Sprintf("scores:%s", context.ExtractIDFromLoginData(loginData))
-	if ok := s.cache.IsKeyExist(s.ctx, key); ok {
-		scores, err := s.cache.Academic.GetScoresCacheYjsy(s.ctx, key)
-		if err != nil {
-			return nil, fmt.Errorf("service.GetScoresYjsy: Get scores info from redis error %w", err)
-		}
-		return scores, nil
-	} else {
-		stu := yjsy.NewStudent().WithLoginData(utils.ParseCookies(loginData.Cookies))
-		scores, err := stu.GetMarks()
-		if err = base.HandleYjsyError(err); err != nil {
-			return nil, fmt.Errorf("service.GetScoresYjsy: Get scores info fail %w", err)
-		}
-		s.taskQueue.Add(key, taskqueue.QueueTask{Execute: func() error {
-			return cache.SetSliceCache(s.cache, s.ctx, key, scores, constants.AcademicScoresExpire, "Academic.SetScoresYjsy")
-		}})
-		// 研究生暂时不做成绩推送，也就不做持久化
-		return scores, nil
+	key := fmt.Sprintf(constants.ScoresKeyFormat, context.ExtractIDFromLoginData(loginData))
+	// getter 自带未命中判定, 单次 round-trip 完成读缓存; 过期竞态会自然回源而不是报错
+	cachedScores, ok, err := s.cache.Academic.GetScoresCacheYjsy(s.ctx, key)
+	if err != nil {
+		return nil, fmt.Errorf("service.GetScoresYjsy: Get scores info from redis error %w", err)
 	}
+	if ok {
+		return cachedScores, nil
+	}
+	stu := yjsy.NewStudent().WithLoginData(utils.ParseCookies(loginData.Cookies))
+	scores, err := stu.GetMarks()
+	if err = base.HandleYjsyError(err); err != nil {
+		return nil, fmt.Errorf("service.GetScoresYjsy: Get scores info fail %w", err)
+	}
+	s.taskQueue.Add(key, taskqueue.QueueTask{Execute: func() error {
+		return cache.SetSliceCache(s.cache, s.ctx, key, scores, constants.AcademicScoresExpire, "Academic.SetScoresYjsy")
+	}})
+	// 研究生暂时不做成绩推送，也就不做持久化
+	return scores, nil
 }
 
 func (s *AcademicService) checkScoreChange(stuId string, scores []*jwch.Mark) error {
@@ -135,6 +132,8 @@ func (s *AcademicService) checkScoreChange(stuId string, scores []*jwch.Mark) er
 }
 
 func (s *AcademicService) handleScoreChange(stuID string, scores []*jwch.Mark) (err error) {
+	// 浅拷贝 scores：该切片与 RPC 响应及缓存写入任务共享，下方原地反转必须只作用于本任务的私有副本，避免数据竞争
+	scores = slices.Clone(scores)
 	// 成绩信息存在并且和db中的不同，比较成绩是否更新
 	var old *model.Score
 	old, err = s.db.Academic.GetScoreByStuId(s.ctx, stuID)
@@ -146,55 +145,51 @@ func (s *AcademicService) handleScoreChange(stuID string, scores []*jwch.Mark) (
 	if err != nil {
 		return err
 	}
-	// 反转 oldScores 和 t.scores，方便判断是新课程还是成绩更新
-	reverseScores := func(scores []*jwch.Mark) {
-		for i := 0; i < len(scores)/2; i++ {
-			scores[i], scores[len(scores)-1-i] = scores[len(scores)-1-i], scores[i]
-		}
-	}
-	// 反转两个切片
-	reverseScores(scores)
-	reverseScores(oldScores)
+	// 反转 scores 和 oldScores，方便判断是新课程还是成绩更新
+	slices.Reverse(scores)
+	slices.Reverse(oldScores)
 	// 循环比较新旧成绩数据
 	for i := range scores {
 		// 如果下标更大，表示已经遍历到新增课程，结束循环
 		if i >= len(oldScores) {
 			break
 		}
-
-		if scores[i].Score != oldScores[i].Score {
-			// 尝试获取课程信息
-			courseHash := utils.GenerateCourseHash(scores[i].Name, scores[i].Semester, scores[i].Teacher,
-				scores[i].ElectiveType, scores[i].Classroom)
-			existingCourse, err := s.db.Academic.GetCourseByHash(s.ctx, courseHash)
-			if err != nil {
-				return err
-			}
-			// 课程信息不存在，说明还未发过通知
-			if existingCourse == nil {
-				// md5 作为tag
-				tag := utils.MD5(strings.Join([]string{
-					scores[i].Name, scores[i].Semester, scores[i].Teacher,
-					scores[i].ElectiveType, scores[i].Classroom,
-				}, "|"))
-				if ok := umeng.EnqueueAsync(func() error {
-					return s.sendNotifications(scores[i].Name, tag)
-				}); !ok {
-					logger.WithCtx(s.ctx).Errorf("umeng async queue full, drop score notification, tag:%v", tag)
-				}
-				// 写入课程信息，代表发送过通知
-				_, err = s.db.Academic.CreateCourseOffering(s.ctx, &model.CourseOffering{
-					Name:         scores[i].Name,
-					Term:         scores[i].Semester,
-					Teacher:      scores[i].Teacher,
-					ElectiveType: scores[i].ElectiveType,
-					Classroom:    scores[i].Classroom,
-					CourseHash:   courseHash,
-				})
-				if err != nil {
-					return err
-				}
-			}
+		// 成绩没有变化，跳过
+		if scores[i].Score == oldScores[i].Score {
+			continue
+		}
+		// 尝试获取课程信息
+		courseHash := utils.GenerateCourseHash(scores[i].Name, scores[i].Semester, scores[i].Teacher,
+			scores[i].ElectiveType, scores[i].Classroom)
+		existingCourse, err := s.db.Academic.GetCourseByHash(s.ctx, courseHash)
+		if err != nil {
+			return err
+		}
+		// 课程信息存在，说明已经发过通知，跳过
+		if existingCourse != nil {
+			continue
+		}
+		// md5 作为tag
+		tag := utils.MD5(strings.Join([]string{
+			scores[i].Name, scores[i].Semester, scores[i].Teacher,
+			scores[i].ElectiveType, scores[i].Classroom,
+		}, "|"))
+		if ok := umeng.EnqueueAsync(func() error {
+			return s.sendNotifications(scores[i].Name, tag)
+		}); !ok {
+			logger.WithCtx(s.ctx).Errorf("umeng async queue full, drop score notification, tag:%v", tag)
+		}
+		// 写入课程信息，代表发送过通知
+		_, err = s.db.Academic.CreateCourseOffering(s.ctx, &model.CourseOffering{
+			Name:         scores[i].Name,
+			Term:         scores[i].Semester,
+			Teacher:      scores[i].Teacher,
+			ElectiveType: scores[i].ElectiveType,
+			Classroom:    scores[i].Classroom,
+			CourseHash:   courseHash,
+		})
+		if err != nil {
+			return err
 		}
 	}
 	return nil

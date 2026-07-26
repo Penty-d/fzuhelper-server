@@ -20,19 +20,15 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bytedance/sonic"
-
+	"github.com/west2-online/fzuhelper-server/pkg/cache/internal/codec"
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 )
 
-func (c *CacheUser) GetStuInfoCache(ctx context.Context, key string) (info *model.Student, err error) {
-	info = new(model.Student)
-	data, err := c.client.Get(ctx, key).Bytes()
+// GetStuInfoCache 获取学生信息缓存; key 不存在时返回 found=false 且不视为错误
+func (c *CacheUser) GetStuInfoCache(ctx context.Context, key string) (*model.Student, bool, error) {
+	info, found, err := codec.GetJSON[*model.Student](ctx, c.client, key)
 	if err != nil {
-		return nil, fmt.Errorf("dal.GetStuInfoCache: GetStuInfo cache failed: %w", err)
+		return nil, false, fmt.Errorf("dal.GetStuInfoCache: GetStuInfo cache failed: %w", err)
 	}
-	if err = sonic.Unmarshal(data, info); err != nil {
-		return nil, fmt.Errorf("dal.GetStuInfoCache: Unmarshal failed: %w", err)
-	}
-	return info, nil
+	return info, found, nil
 }

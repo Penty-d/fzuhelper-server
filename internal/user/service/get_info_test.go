@@ -18,7 +18,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -154,17 +153,13 @@ func TestGetUserInfo(t *testing.T) {
 			mockey.Mock((*taskqueue.BaseTaskQueue).Add).To(func(btq *taskqueue.BaseTaskQueue, key string, task taskqueue.QueueTask) {
 				_ = task.Execute()
 			}).Build()
-			mockey.Mock((*cache.Cache).IsKeyExist).Return(tc.cacheExist).Build()
-
 			mockey.Mock(time.Time.After).Return(true).Build()
 
-			// 如果缓存存在，则 Mock GetStuInfoCache
+			// getter 自带未命中判定, 通过 found 返回值区分命中/未命中
 			if tc.cacheExist {
-				mockey.Mock((*user.CacheUser).GetStuInfoCache).Return(tc.cacheStudent, tc.cacheGetError).Build()
+				mockey.Mock((*user.CacheUser).GetStuInfoCache).Return(tc.cacheStudent, true, tc.cacheGetError).Build()
 			} else {
-				// 如果缓存不存在，一般不会去调 GetStuInfoCache
-				// 也可以不 Mock，或 Mock 一个默认返回
-				mockey.Mock((*user.CacheUser).GetStuInfoCache).Return(nil, fmt.Errorf("should not be called if cache doesn't exist")).Build()
+				mockey.Mock((*user.CacheUser).GetStuInfoCache).Return(nil, false, nil).Build()
 			}
 
 			// Mock DB 方法
@@ -278,7 +273,7 @@ func TestGetUserInfoYjsy(t *testing.T) {
 		{
 			name:              "db create error",
 			expectExist:       false,
-			expectError:       "service.GetUserInfo:",
+			expectError:       "service.GetUserInfoYjsy:",
 			expectInfo:        info,
 			expectYjsy:        stuInfo,
 			mockDBCreateError: gorm.ErrInvalidData,
@@ -286,7 +281,7 @@ func TestGetUserInfoYjsy(t *testing.T) {
 		{
 			name:        "db error",
 			expectExist: false,
-			expectError: "service.GetUserInfo:",
+			expectError: "service.GetUserInfoYjsy:",
 			expectInfo:  info,
 			expectYjsy:  stuInfo,
 			mockError:   gorm.ErrInvalidData,
@@ -315,16 +310,13 @@ func TestGetUserInfoYjsy(t *testing.T) {
 			mockey.Mock((*taskqueue.BaseTaskQueue).Add).To(func(btq *taskqueue.BaseTaskQueue, key string, task taskqueue.QueueTask) {
 				_ = task.Execute()
 			}).Build()
-			mockey.Mock((*cache.Cache).IsKeyExist).Return(tc.cacheExist).Build()
-
 			mockey.Mock(time.Time.After).Return(true).Build()
 
-			// 如果缓存存在，则 Mock GetStuInfoCache
+			// getter 自带未命中判定, 通过 found 返回值区分命中/未命中
 			if tc.cacheExist {
-				mockey.Mock((*user.CacheUser).GetStuInfoCache).Return(tc.cacheStudent, tc.cacheGetError).Build()
+				mockey.Mock((*user.CacheUser).GetStuInfoCache).Return(tc.cacheStudent, true, tc.cacheGetError).Build()
 			} else {
-				// 如果缓存不存在，一般不会去调 GetStuInfoCache
-				mockey.Mock((*user.CacheUser).GetStuInfoCache).Return(nil, fmt.Errorf("should not be called if cache doesn't exist")).Build()
+				mockey.Mock((*user.CacheUser).GetStuInfoCache).Return(nil, false, nil).Build()
 			}
 
 			// Mock DB 方法

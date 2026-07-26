@@ -29,22 +29,23 @@ import (
 	"github.com/west2-online/yjsy"
 )
 
-func (s *UserService) GetUserInfo(stuId string) (*db.Student, error) {
-	// 查询cache
-	existCache := s.cache.IsKeyExist(s.ctx, stuId)
-	if existCache {
-		stuInfo, err := s.cache.User.GetStuInfoCache(s.ctx, stuId)
-		if err != nil {
-			return nil, fmt.Errorf("service.GetUserInfo: %w", err)
-		}
+// getUserInfo 是 GetUserInfo 与 GetUserInfoYjsy 的公共骨架, 承载缓存检查、DB 判存、插入/更新与异步写缓存;
+// fnName 用于错误包装以保留真实调用方名称, fetch 负责从对应教务系统拉取学生信息
+func (s *UserService) getUserInfo(stuId string, fnName string, fetch func() (*db.Student, error)) (*db.Student, error) {
+	// 查询cache; getter 自带未命中判定, 单次 round-trip 完成读缓存, 过期竞态会自然回源而不是报错
+	stuInfo, ok, err := s.cache.User.GetStuInfoCache(s.ctx, stuId)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fnName, err)
+	}
+	if ok {
 		return stuInfo, nil
 	}
 
 	// 未命中cache，查询数据库是否存入此学生信息
 	exist, stuInfo, err := s.db.User.GetStudentById(s.ctx, stuId)
-	IsUpdate := false
+	isUpdate := false
 	if err != nil {
-		return nil, fmt.Errorf("service.GetUserInfo: %w", err)
+		return nil, fmt.Errorf("%s: %w", fnName, err)
 	}
 	if exist {
 		if stuInfo.UpdatedAt.Add(constants.StuInfoExpireTime).After(time.Now()) {
@@ -53,32 +54,21 @@ func (s *UserService) GetUserInfo(stuId string) (*db.Student, error) {
 			}})
 			return stuInfo, nil
 		}
-		IsUpdate = true
+		isUpdate = true
 	}
 
-	// 将学生信息插入/更新
-	stu := jwch.NewStudent().WithLoginData(s.Identifier, s.cookies)
-	resp, err := stu.GetInfo()
+	// 拉取学生信息后插入/更新
+	userModel, err := fetch()
 	if err != nil {
-		return nil, errno.Errorf(errno.InternalServiceErrorCode, "service.GetUserInfo: jwch failed: %v", err)
+		return nil, err
 	}
-	grade, _ := strconv.Atoi(resp.Grade)
-	userModel := &db.Student{
-		StuId:    stuId,
-		Name:     resp.Name,
-		Sex:      resp.Sex,
-		Birthday: resp.Birthday,
-		College:  resp.College,
-		Grade:    int64(grade),
-		Major:    resp.Major,
-	}
-	if IsUpdate {
+	if isUpdate {
 		err = s.db.User.UpdateStudent(s.ctx, userModel)
 	} else {
 		err = s.db.User.CreateStudent(s.ctx, userModel)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("service.GetUserInfo: %w", err)
+		return nil, fmt.Errorf("%s: %w", fnName, err)
 	}
 
 	// 存入cache
@@ -89,62 +79,42 @@ func (s *UserService) GetUserInfo(stuId string) (*db.Student, error) {
 	return userModel, nil
 }
 
-func (s *UserService) GetUserInfoYjsy(stuId string) (*db.Student, error) {
-	// 查询cache
-	existCache := s.cache.IsKeyExist(s.ctx, stuId)
-	if existCache {
-		stuInfo, err := s.cache.User.GetStuInfoCache(s.ctx, stuId)
+func (s *UserService) GetUserInfo(stuId string) (*db.Student, error) {
+	return s.getUserInfo(stuId, "service.GetUserInfo", func() (*db.Student, error) {
+		stu := jwch.NewStudent().WithLoginData(s.Identifier, s.cookies)
+		resp, err := stu.GetInfo()
 		if err != nil {
-			return nil, fmt.Errorf("service.GetUserInfo: %w", err)
+			return nil, errno.Errorf(errno.InternalServiceErrorCode, "service.GetUserInfo: jwch failed: %v", err)
 		}
-		return stuInfo, nil
-	}
+		grade, _ := strconv.Atoi(resp.Grade)
+		return &db.Student{
+			StuId:    stuId,
+			Name:     resp.Name,
+			Sex:      resp.Sex,
+			Birthday: resp.Birthday,
+			College:  resp.College,
+			Grade:    int64(grade),
+			Major:    resp.Major,
+		}, nil
+	})
+}
 
-	// 未命中cache，查询数据库是否存入此学生信息
-	exist, stuInfo, err := s.db.User.GetStudentById(s.ctx, stuId)
-	IsUpdate := false
-	if err != nil {
-		return nil, fmt.Errorf("service.GetUserInfo: %w", err)
-	}
-	if exist {
-		if stuInfo.UpdatedAt.Add(constants.StuInfoExpireTime).After(time.Now()) {
-			s.taskQueue.Add(fmt.Sprintf("setStuInfoCache:%s", stuId), taskqueue.QueueTask{Execute: func() error {
-				return s.cache.User.SetStuInfoCache(s.ctx, stuId, stuInfo)
-			}})
-			return stuInfo, nil
+func (s *UserService) GetUserInfoYjsy(stuId string) (*db.Student, error) {
+	return s.getUserInfo(stuId, "service.GetUserInfoYjsy", func() (*db.Student, error) {
+		stu := yjsy.NewStudent().WithLoginData(s.cookies)
+		resp, err := stu.GetStudentInfo()
+		if err != nil {
+			return nil, errno.Errorf(errno.InternalServiceErrorCode, "service.GetUserInfoYjsy: yjsy failed: %v", err)
 		}
-		IsUpdate = true
-	}
-
-	// 将学生信息插入/更新
-	stu := yjsy.NewStudent().WithLoginData(s.cookies)
-	resp, err := stu.GetStudentInfo()
-	if err != nil {
-		return nil, errno.Errorf(errno.InternalServiceErrorCode, "service.GetUserInfo: yjsy failed: %v", err)
-	}
-	grade, _ := strconv.Atoi(resp.Grade)
-	userModel := &db.Student{
-		StuId:    stuId,
-		Name:     resp.Name,
-		Sex:      resp.Sex,
-		Birthday: resp.Birthday,
-		College:  resp.College,
-		Grade:    int64(grade),
-		Major:    resp.Major,
-	}
-	if IsUpdate {
-		err = s.db.User.UpdateStudent(s.ctx, userModel)
-	} else {
-		err = s.db.User.CreateStudent(s.ctx, userModel)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("service.GetUserInfo: %w", err)
-	}
-
-	// 存入cache
-	s.taskQueue.Add(fmt.Sprintf("setStuInfoCache:%s", stuId), taskqueue.QueueTask{Execute: func() error {
-		return s.cache.User.SetStuInfoCache(s.ctx, stuId, userModel)
-	}})
-
-	return userModel, nil
+		grade, _ := strconv.Atoi(resp.Grade)
+		return &db.Student{
+			StuId:    stuId,
+			Name:     resp.Name,
+			Sex:      resp.Sex,
+			Birthday: resp.Birthday,
+			College:  resp.College,
+			Grade:    int64(grade),
+			Major:    resp.Major,
+		}, nil
+	})
 }

@@ -56,6 +56,16 @@ const (
 	LocateDateKey                 = "locateDate"                   // [course]
 )
 
+// Key Format 动态拼接的 redis key 格式，配合 fmt.Sprintf 使用；集中定义避免各服务散落硬编码
+const (
+	TermsKeyFormat          = "terms:%s"        // [course] 学期列表，参数: stuId
+	CourseListKeyFormat     = "course:%s:%s"    // [course] 课程列表，参数: stuId, term
+	UserFriendsKeyFormat    = "user_friends:%s" // [user] 好友列表，参数: stuId
+	InvitationCodeKeyFormat = "codes:%s"        // [user] 邀请码，参数: stuId
+	CodeMappingKeyFormat    = "code_mapping:%s" // [user] 邀请码映射，参数: code
+	ScoresKeyFormat         = "scores:%s"       // [academic] 成绩，参数: stuId
+)
+
 // DB Name
 const (
 	RedisDBEmptyRoom    = 0

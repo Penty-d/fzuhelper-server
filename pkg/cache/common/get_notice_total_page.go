@@ -17,23 +17,22 @@ limitations under the License.
 package common
 
 import (
+	"context"
+	"errors"
+
 	"github.com/redis/go-redis/v9"
 
-	"github.com/west2-online/fzuhelper-server/pkg/constants"
+	"github.com/west2-online/fzuhelper-server/pkg/errno"
 )
 
-// noticeTotalPageKey 教务处通知总页数的缓存 key，由通知同步任务定时回填
-const noticeTotalPageKey = "notice:total_page"
-
-// noticeTotalPageExpire 取 2 倍同步周期兜底，避免同步任务异常后缓存长期陈旧
-const noticeTotalPageExpire = 2 * constants.NoticeUpdateTime
-
-type CacheCommon struct {
-	client *redis.Client
-}
-
-func NewCacheCommon(client *redis.Client) *CacheCommon {
-	return &CacheCommon{
-		client: client,
+// GetNoticeTotalPageCache 获取缓存的教务处通知总页数，未命中时 ok 为 false 且不返回错误
+func (c *CacheCommon) GetNoticeTotalPageCache(ctx context.Context) (total int, ok bool, err error) {
+	total, err = c.client.Get(ctx, noticeTotalPageKey).Int()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return 0, false, nil
+		}
+		return 0, false, errno.Errorf(errno.InternalDatabaseErrorCode, "dal.GetNoticeTotalPageCache: get notice total page failed: %v", err)
 	}
+	return total, true, nil
 }

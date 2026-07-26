@@ -25,6 +25,8 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/west2-online/fzuhelper-server/pkg/base"
+	"github.com/west2-online/fzuhelper-server/pkg/cache"
+	commonCache "github.com/west2-online/fzuhelper-server/pkg/cache/common"
 	"github.com/west2-online/fzuhelper-server/pkg/db"
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 	"github.com/west2-online/fzuhelper-server/pkg/db/notice"
@@ -34,15 +36,18 @@ import (
 
 func TestGetNotice(t *testing.T) {
 	type testCase struct {
-		name          string
-		pageNum       int
-		mockDBResult  []model.Notice
-		mockDBError   error
-		mockJwchTotal int
-		mockJwchError error
-		expectList    []model.Notice
-		expectTotal   int
-		expectError   string
+		name           string
+		pageNum        int
+		mockDBResult   []model.Notice
+		mockDBError    error
+		mockCacheTotal int
+		mockCacheHit   bool
+		mockCacheError error
+		mockJwchTotal  int
+		mockJwchError  error
+		expectList     []model.Notice
+		expectTotal    int
+		expectError    string
 	}
 
 	// 准备 mock 数据
@@ -59,6 +64,26 @@ func TestGetNotice(t *testing.T) {
 			mockJwchTotal: 10,
 			expectList:    mockNotices,
 			expectTotal:   10,
+		},
+		{
+			name:           "CacheHitCase",
+			pageNum:        1,
+			mockDBResult:   mockNotices,
+			mockCacheTotal: 5,
+			mockCacheHit:   true,
+			// 缓存命中时不应回源 jwch，即使 jwch 报错也应成功返回
+			mockJwchError: assert.AnError,
+			expectList:    mockNotices,
+			expectTotal:   5,
+		},
+		{
+			name:           "CacheErrorFallbackCase",
+			pageNum:        1,
+			mockDBResult:   mockNotices,
+			mockCacheError: assert.AnError,
+			mockJwchTotal:  10,
+			expectList:     mockNotices,
+			expectTotal:    10,
 		},
 		{
 			name:        "DBGetError",
@@ -79,11 +104,16 @@ func TestGetNotice(t *testing.T) {
 	for _, tc := range testCases {
 		mockey.PatchConvey(tc.name, t, func() {
 			mockClientSet := &base.ClientSet{
-				DBClient: new(db.Database),
+				DBClient:    new(db.Database),
+				CacheClient: new(cache.Cache),
 			}
 
 			// Mock DB GetNoticeByPage
 			mockey.Mock((*notice.DBNotice).GetNoticeByPage).Return(tc.mockDBResult, tc.mockDBError).Build()
+			// Mock 总页数缓存读写
+			mockey.Mock((*commonCache.CacheCommon).GetNoticeTotalPageCache).
+				Return(tc.mockCacheTotal, tc.mockCacheHit, tc.mockCacheError).Build()
+			mockey.Mock((*commonCache.CacheCommon).SetNoticeTotalPageCache).Return(nil).Build()
 			// Mock jwch GetNoticeInfo
 			mockey.Mock((*jwch.Student).GetNoticeInfo).Return(nil, tc.mockJwchTotal, tc.mockJwchError).Build()
 

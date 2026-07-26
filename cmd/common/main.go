@@ -25,10 +25,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudwego/kitex/server"
-	"github.com/cloudwego/netpoll"
-	etcd "github.com/kitex-contrib/registry-etcd"
-
 	"github.com/west2-online/fzuhelper-server/config"
 	"github.com/west2-online/fzuhelper-server/internal/common"
 	"github.com/west2-online/fzuhelper-server/internal/common/pack"
@@ -43,10 +39,8 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/github"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/taskqueue"
-	"github.com/west2-online/fzuhelper-server/pkg/tracing"
 	"github.com/west2-online/fzuhelper-server/pkg/umeng"
 	"github.com/west2-online/fzuhelper-server/pkg/upyun"
-	"github.com/west2-online/fzuhelper-server/pkg/utils"
 	"github.com/west2-online/jwch"
 )
 
@@ -61,15 +55,19 @@ func init() {
 	logger.Init(serviceName, config.GetLoggerLevel())
 	clientSet = base.NewClientSet(base.WithDBClient(), base.WithRedisClient(constants.RedisDBCommon))
 	taskQueue = taskqueue.NewBaseTaskQueue()
-	loadNotice(clientSet.DBClient)
 }
 
-// TODO: 失败后的重试机制
 func loadNotice(db *db.Database) {
 	stu := jwch.NewStudent().WithUser(config.DefaultUser.Account, config.DefaultUser.Password)
 	_, totalPage, err := stu.GetNoticeInfo(&jwch.NoticeInfoReq{PageNum: 1})
 	if err != nil {
 		logger.Errorf("syncer init: failed to get notice info: %v", err)
+	}
+	// 预热总页数缓存，供 GetNotice 直接读取，避免每次请求都实时爬取教务处
+	if totalPage > 0 {
+		if err := clientSet.CacheClient.Common.SetNoticeTotalPageCache(context.Background(), totalPage); err != nil {
+			logger.Warnf("syncer init: failed to cache notice total page: %v", err)
+		}
 	}
 	// 初始化数据库
 	for i := 1; i <= totalPage; i++ {
@@ -77,64 +75,74 @@ func loadNotice(db *db.Database) {
 		if err != nil {
 			logger.Errorf("syncer init: failed to get notice info in page %d: %v", i, err)
 		}
-		for _, row := range content {
-			ctx := context.Background()
+		ctx := context.Background()
 
-			ok, err := db.Notice.IsNoticeExists(ctx, row.Title, row.URL)
-			if err != nil {
-				logger.Warnf("syncer init: failed to check notice exists in page %d: %v", i, err)
-				continue
-			}
-			// 数据库已存在，无需处理
-			if ok {
-				continue
-			}
+		// 按页批量查询并在内存中 diff，替代逐条 COUNT + INSERT，减少启动期 DB round-trip
+		newRows, err := filterNewNotices(ctx, db, content)
+		if err != nil {
+			logger.Warnf("syncer init: failed to check notice exists in page %d: %v", i, err)
+			continue
+		}
+		if len(newRows) == 0 {
+			continue
+		}
 
-			info := &model.Notice{
+		infos := make([]*model.Notice, 0, len(newRows))
+		for _, row := range newRows {
+			infos = append(infos, &model.Notice{
 				Title:       row.Title,
 				PublishedAt: row.Date,
 				URL:         row.URL,
-			}
-			if err = db.Notice.CreateNotice(ctx, info); err != nil {
-				logger.Warnf("syncer init: failed to create notice in page %d: %v", i, err)
-				continue
-			}
+			})
+		}
+		if err = db.Notice.CreateNotices(ctx, infos); err != nil {
+			logger.Warnf("syncer init: failed to create notices in page %d: %v", i, err)
+			continue
+		}
 
-			go func(notice *jwch.NoticeInfo) {
-				ctx := context.Background()
-				if err := commonSvc.NewCommonService(ctx, clientSet, taskQueue).ProcessAutoAdjustCourseNotice(notice); err != nil {
-					logger.Errorf("syncer init: ProcessAutoAdjustCourseNotice failed, title=%s url=%s err=%v", notice.Title, notice.URL, err)
-				}
-			}(row)
+		// 走 taskQueue 处理调课通知，天然获得并发上限与失败重试，避免瞬时大量 goroutine 轰击上游
+		for _, row := range newRows {
+			taskQueue.Add("processNotice:"+row.URL, taskqueue.QueueTask{Execute: func() error {
+				return commonSvc.NewCommonService(context.Background(), clientSet, taskQueue).ProcessAutoAdjustCourseNotice(row)
+			}})
 		}
 	}
 	logger.Infof("syncer init: notice syncer init success")
 }
 
+// filterNewNotices 批量查询数据库中已存在的通知，按 (title, url) 过滤出尚未入库的新通知。
+// 注意：判重键是 (title, url) 而表上的唯一约束只有 url，因此标题被教务处改过的通知每轮都会被判为新增，
+// INSERT 会被唯一索引吸收但推送仍会重复触发。此判重口径与重构前的 IsNoticeExists 保持一致，未在本次改动中调整
+func filterNewNotices(ctx context.Context, database *db.Database, content []*jwch.NoticeInfo) ([]*jwch.NoticeInfo, error) {
+	if len(content) == 0 {
+		return nil, nil
+	}
+	urls := make([]string, 0, len(content))
+	for _, row := range content {
+		urls = append(urls, row.URL)
+	}
+	existing, err := database.Notice.GetNoticesByUrls(ctx, urls)
+	if err != nil {
+		return nil, err
+	}
+	existSet := make(map[[2]string]struct{}, len(existing))
+	for _, row := range existing {
+		existSet[[2]string{row.Title, row.URL}] = struct{}{}
+	}
+	newRows := make([]*jwch.NoticeInfo, 0, len(content))
+	for _, row := range content {
+		if _, ok := existSet[[2]string{row.Title, row.URL}]; !ok {
+			newRows = append(newRows, row)
+		}
+	}
+	return newRows, nil
+}
+
 func main() {
-	// Open Telemetry provider
-	shutdown := tracing.NewOtelProvider(serviceName, config.Otel.Endpoint)
-
-	r, err := etcd.NewEtcdRegistry([]string{config.Etcd.Addr})
-	if err != nil {
-		logger.Fatalf("Common: etcd registry failed, error: %v", err)
-	}
-	listenAddr, err := utils.GetAvailablePort()
-	if err != nil {
-		logger.Fatalf("Common: get available port failed: %v", err)
-	}
-	addr, err := netpoll.ResolveTCPAddr("tcp", listenAddr)
-	if err != nil {
-		logger.Fatalf("Common: listen addr failed %v", err)
-	}
-
 	svr := commonservice.NewServer(
 		common.NewCommonService(clientSet, taskQueue),
-		baseserver.AssembleCommonServerConfig(serviceName, addr, r)...,
+		baseserver.MustAssembleServerOptions(serviceName, clientSet.Close)...,
 	)
-	server.RegisterShutdownHook(clientSet.Close)
-	server.RegisterShutdownHook(tracing.ProviderShutdown(shutdown,
-		"Common: otel provider shutdown failed: %v")) // otel provider
 
 	taskQueue.AddSchedule(constants.NoticeTaskKey, taskqueue.ScheduleQueueTask{
 		Execute: syncNoticeTask,
@@ -148,9 +156,15 @@ func main() {
 			return constants.ContributorInfoUpdateTime
 		},
 	})
+
+	// 必须在两个定时任务入队之后再灌入通知：任务队列是 FIFO 且只有 WorkerNumber 个 worker，
+	// 冷启动时通知数量可达数千条（其中调课通知还要走 HTTP + LLM），
+	// 先入队会把定时任务挤到队尾，导致贡献者缓存长时间不被填充、对应接口持续报错
+	loadNotice(clientSet.DBClient)
+
 	taskQueue.Start()
 
-	if err = svr.Run(); err != nil {
+	if err := svr.Run(); err != nil {
 		logger.Fatalf("Common: server run failed: %v", err)
 	}
 }
@@ -158,53 +172,56 @@ func main() {
 func syncNoticeTask(ctx context.Context) error {
 	logger.WithCtx(ctx).Infof("syncNoticeTask: jwch notice sync task started")
 	// 默认爬取第一页的内容（教务处不太可能一次性更新出一页的数据），然后和数据库做 diff 操作
-	content, _, err := jwch.NewStudent().WithUser(config.DefaultUser.Account, config.DefaultUser.Password).GetNoticeInfo(&jwch.NoticeInfoReq{PageNum: 1})
+	content, totalPage, err := jwch.NewStudent().WithUser(config.DefaultUser.Account, config.DefaultUser.Password).GetNoticeInfo(&jwch.NoticeInfoReq{PageNum: 1})
 	if err != nil {
 		logger.WithCtx(ctx).Errorf("notice sync task: failed to get notice info: %v", err)
 		return fmt.Errorf("failed to get notice info: %w", err)
 	}
 
-	for _, row := range content {
-		// 判断是否已存在
-		ok, err := clientSet.DBClient.Notice.IsNoticeExists(ctx, row.Title, row.URL)
-		if err != nil {
-			return fmt.Errorf("notice sync task: failed to check url exists: %w", err)
+	// 回填总页数缓存，供 GetNotice 直接读取，避免每次请求都实时爬取教务处；
+	// 解析异常时 totalPage 可能为 0，写入会让 GetNotice 在整个 TTL 内都返回 0 导致客户端分页失效
+	if totalPage > 0 {
+		if err := clientSet.CacheClient.Common.SetNoticeTotalPageCache(ctx, totalPage); err != nil {
+			logger.WithCtx(ctx).Warnf("notice sync task: failed to cache notice total page: %v", err)
 		}
+	}
 
-		// 数据库已存在，无需处理
-		if ok {
-			continue
-		}
+	// 批量查询并在内存中按 (title, url) diff 出新增通知
+	newRows, err := filterNewNotices(ctx, clientSet.DBClient, content)
+	if err != nil {
+		return fmt.Errorf("notice sync task: failed to check url exists: %w", err)
+	}
+	if len(newRows) == 0 {
+		return nil
+	}
 
+	infos := make([]*model.Notice, 0, len(newRows))
+	for _, row := range newRows {
 		logger.WithCtx(ctx).Infof("syncNoticeTask: new notice found, title=%s url=%s", row.Title, row.URL)
-
-		info := &model.Notice{
+		infos = append(infos, &model.Notice{
 			Title:       row.Title,
 			URL:         row.URL,
 			PublishedAt: row.Date,
-		}
+		})
+	}
+	if err = clientSet.DBClient.Notice.CreateNotices(ctx, infos); err != nil {
+		return fmt.Errorf("notice sync task: failed to create notice: %w", err)
+	}
 
-		if err = clientSet.DBClient.Notice.CreateNotice(ctx, info); err != nil {
-			return fmt.Errorf("notice sync task: failed to create notice: %w", err)
-		}
-
-		go func(notice *jwch.NoticeInfo) {
-			ctx := context.Background()
-			if err := commonSvc.NewCommonService(ctx, clientSet, taskQueue).ProcessAutoAdjustCourseNotice(notice); err != nil {
-				logger.WithCtx(ctx).Errorf("ProcessAutoAdjustCourseNotice failed, title=%s url=%s err=%v", notice.Title, notice.URL, err)
-			}
-		}(row)
+	for _, row := range newRows {
+		// 走 taskQueue 处理调课通知，统一获得并发上限与失败重试
+		taskQueue.Add("processNotice:"+row.URL, taskqueue.QueueTask{Execute: func() error {
+			return commonSvc.NewCommonService(context.Background(), clientSet, taskQueue).ProcessAutoAdjustCourseNotice(row)
+		}})
 
 		// 进行消息推送
 		if ok := umeng.EnqueueAsync(func() error {
-			deeplink := constants.UmengJwchNoticeDeeplink + "?url=" + url.QueryEscape(info.URL)
-			err = umeng.SendAndroidGroupcastWithGoApp("教务处通知", info.Title, "", constants.UmengJwchNoticeTag, "教务处", deeplink)
-			if err != nil {
+			deeplink := constants.UmengJwchNoticeDeeplink + "?url=" + url.QueryEscape(row.URL)
+			if err := umeng.SendAndroidGroupcastWithGoApp("教务处通知", row.Title, "", constants.UmengJwchNoticeTag, "教务处", deeplink); err != nil {
 				logger.WithCtx(ctx).Errorf("notice sync task: failed to send notice to Android: %v", err)
 			}
 
-			err = umeng.SendIOSGroupcast("教务处通知", "", info.Title, constants.UmengJwchNoticeTag, "教务处", deeplink)
-			if err != nil {
+			if err := umeng.SendIOSGroupcast("教务处通知", "", row.Title, constants.UmengJwchNoticeTag, "教务处", deeplink); err != nil {
 				logger.WithCtx(ctx).Errorf("notice sync task: failed to send notice to IOS: %v", err)
 			}
 			logger.WithCtx(ctx).Infof("notice sync task: notice send success")

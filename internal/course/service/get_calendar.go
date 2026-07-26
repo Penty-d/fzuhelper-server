@@ -50,10 +50,6 @@ var CLASS_TIME = [][2][2]int{
 }
 
 func (s *CourseService) GetCalendar(stuID string) ([]byte, error) {
-	// 初始化
-	cstSh, _ := time.LoadLocation("Asia/Shanghai")
-	time.Local = cstSh
-
 	// 转换为 ics 格式
 	cal := ics.NewCalendar()
 	cal.SetMethod(ics.MethodRequest)
@@ -160,10 +156,11 @@ func calcClassTime(week int64, weekday int64, startClass int64, endClass int64, 
 	startHour, startMinute := CLASS_TIME[startClass][0][0], CLASS_TIME[startClass][0][1]
 	endHour, endMinute := CLASS_TIME[endClass][1][0], CLASS_TIME[endClass][1][1]
 
+	// 显式使用中国时区构造时间，不依赖进程全局的 time.Local
 	startTime := dateBase.AddDate(0, 0, int((week-1)*7+(weekday-1)))
-	startTime = time.Date(startTime.Year(), startTime.Month(), startTime.Day(), startHour, startMinute, 0, 0, time.Local)
+	startTime = time.Date(startTime.Year(), startTime.Month(), startTime.Day(), startHour, startMinute, 0, 0, constants.ChinaTZ)
 	endTime := dateBase.AddDate(0, 0, int((week-1)*7+(weekday-1)))
-	endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), endHour, endMinute, 0, 0, time.Local)
+	endTime = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), endHour, endMinute, 0, 0, constants.ChinaTZ)
 
 	return startTime, endTime
 }

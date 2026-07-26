@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
+	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/jwch"
 )
 
@@ -28,6 +29,7 @@ func BuildLocateDate(date *jwch.LocateDate) *model.LocateDate {
 		Week: date.Week,
 		Year: date.Year,
 		Term: date.Term,
-		Date: time.Now().Format("2006-01-02"),
+		// 显式使用中国时区，不依赖进程全局时区设置
+		Date: time.Now().In(constants.ChinaTZ).Format("2006-01-02"),
 	}
 }

@@ -76,13 +76,23 @@ func TestDBLaunchScreen_AddImageListShowTime(t *testing.T) {
 			mockSnowflake := new(utils.Snowflake)
 			mockDBLaunchScreen := NewDBLaunchScreen(mockGormDB, mockSnowflake)
 
+			updateCalled := false
+			var gotColumn string
+			var gotValue interface{}
+
 			mockey.Mock((*gorm.DB).WithContext).To(func(ctx context.Context) *gorm.DB {
 				return mockGormDB
 			}).Build()
 			mockey.Mock((*gorm.DB).Table).To(func(name string, args ...interface{}) *gorm.DB {
 				return mockGormDB
 			}).Build()
-			mockey.Mock((*gorm.DB).Save).To(func(value interface{}) *gorm.DB {
+			mockey.Mock((*gorm.DB).Where).To(func(query interface{}, args ...interface{}) *gorm.DB {
+				return mockGormDB
+			}).Build()
+			mockey.Mock((*gorm.DB).UpdateColumn).To(func(column string, value interface{}) *gorm.DB {
+				updateCalled = true
+				gotColumn = column
+				gotValue = value
 				if tc.mockError != nil {
 					mockGormDB.Error = tc.mockError
 					return mockGormDB
@@ -98,6 +108,14 @@ func TestDBLaunchScreen_AddImageListShowTime(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.expectedPictureList, tc.inputPictureList)
+				if len(*tc.inputPictureList) == 0 {
+					// 空列表直接返回, 不应触发数据库更新
+					assert.False(t, updateCalled)
+				} else {
+					assert.True(t, updateCalled)
+					assert.Equal(t, "show_times", gotColumn)
+					assert.Equal(t, gorm.Expr("show_times + 1"), gotValue)
+				}
 			}
 		})
 	}

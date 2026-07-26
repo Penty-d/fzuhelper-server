@@ -20,18 +20,22 @@ import (
 	"context"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
-	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 )
 
 func (c *DBLaunchScreen) AddPointTime(ctx context.Context, id int64) error {
-	pictureModel := new(model.Picture)
-	if err := c.client.WithContext(ctx).Table(constants.LaunchScreenTableName).Where("id = ?", id).First(pictureModel).Error; err != nil {
-		return fmt.Errorf("dal.AddPointTime error: %w", err)
+	// 使用 UpdateColumn 原子自增, 避免并发下丢失计数或用旧值覆盖其他字段
+	res := c.client.WithContext(ctx).Table(constants.LaunchScreenTableName).
+		Where("id = ?", id).
+		UpdateColumn("point_times", gorm.Expr("point_times + 1"))
+	if res.Error != nil {
+		return fmt.Errorf("dal.AddPointTime error: %w", res.Error)
 	}
-	pictureModel.PointTimes++
-	if err := c.client.WithContext(ctx).Table(constants.LaunchScreenTableName).Save(pictureModel).Error; err != nil {
-		return fmt.Errorf("dal.AddPointTime error: %w", err)
+	// 保持原有语义: id 不存在时返回 record not found
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("dal.AddPointTime error: %w", gorm.ErrRecordNotFound)
 	}
 	return nil
 }

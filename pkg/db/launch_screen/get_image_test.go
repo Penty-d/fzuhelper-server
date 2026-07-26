@@ -183,15 +183,6 @@ func TestDBLaunchScreen_GetImageBySType(t *testing.T) {
 				return mockGormDB
 			}).Build()
 
-			mockey.Mock((*gorm.DB).Count).To(func(count *int64) *gorm.DB {
-				if tc.mockError != nil {
-					mockGormDB.Error = tc.mockError
-					return mockGormDB
-				}
-				*count = tc.expectedCount
-				return mockGormDB
-			}).Build()
-
 			mockey.Mock((*gorm.DB).Order).To(func(value interface{}) *gorm.DB {
 				return mockGormDB
 			}).Build()
@@ -295,15 +286,6 @@ func TestDBLaunchScreen_GetImageByIdList(t *testing.T) {
 			}).Build()
 			mockey.Mock((*gorm.DB).Table).To(func(name string, args ...interface{}) *gorm.DB { return mockGormDB }).Build()
 			mockey.Mock((*gorm.DB).Where).To(func(query interface{}, args ...interface{}) *gorm.DB {
-				return mockGormDB
-			}).Build()
-
-			mockey.Mock((*gorm.DB).Count).To(func(count *int64) *gorm.DB {
-				if tc.mockError != nil {
-					mockGormDB.Error = tc.mockError
-					return mockGormDB
-				}
-				*count = tc.expectedCount
 				return mockGormDB
 			}).Build()
 

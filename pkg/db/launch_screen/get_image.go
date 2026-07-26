@@ -37,34 +37,33 @@ func (c *DBLaunchScreen) GetImageById(ctx context.Context, id int64) (*model.Pic
 func (c *DBLaunchScreen) GetImageBySType(ctx context.Context, sType int64) (*[]model.Picture, int64, error) {
 	Loc := utils.LoadCNLocation()
 	pictures := new([]model.Picture)
-	var count int64 = 0
 	now := time.Now().In(Loc)
 	hour := now.Hour()
-	// 按创建时间降序
+	// 按创建时间降序; 查询无分页, 数量直接取 len 即可, 省去一条 COUNT 查询
 	if err := c.client.WithContext(ctx).Table(constants.LaunchScreenTableName).
 		Where("s_type = ? AND start_at < ? AND end_at > ? AND start_time <= ? AND end_time >= ?",
 			sType, now, now, hour, hour).
-		Count(&count).Order("created_at DESC").
+		Order("created_at DESC").
 		Find(pictures).
 		Error; err != nil {
 		return nil, -1, err
 	}
-	return pictures, count, nil
+	return pictures, int64(len(*pictures)), nil
 }
 
 func (c *DBLaunchScreen) GetImageByIdList(ctx context.Context, imgIdList *[]int64) (*[]model.Picture, int64, error) {
 	Loc := utils.LoadCNLocation()
 	pictures := new([]model.Picture)
-	var count int64 = 0
 	now := time.Now().In(Loc)
 	hour := now.Hour()
+	// 查询无分页, 数量直接取 len 即可, 省去一条 COUNT 查询
 	err := c.client.WithContext(ctx).Table(constants.LaunchScreenTableName).
 		Where("id IN ? AND start_at < ? AND end_at > ? AND start_time <= ? AND end_time >= ?",
-			*imgIdList, now, now, hour, hour).Count(&count).Order("created_at DESC").Find(pictures).Error
+			*imgIdList, now, now, hour, hour).Order("created_at DESC").Find(pictures).Error
 	if err != nil {
 		return nil, -1, fmt.Errorf("dal.GetImageByIdList error: %w", err)
 	}
-	return pictures, count, nil
+	return pictures, int64(len(*pictures)), nil
 }
 
 func (c *DBLaunchScreen) GetLastImageId(ctx context.Context) (int64, error) {

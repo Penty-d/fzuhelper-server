@@ -25,48 +25,41 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 
-	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
 
 func TestDBLaunchScreen_AddPointTime(t *testing.T) {
 	type testCase struct {
-		name            string
-		mockErrorFirst  error
-		mockErrorSave   error
-		inputId         int64
-		initialPicture  *model.Picture
-		expectedPicture *model.Picture
-		expectingError  bool
+		name             string
+		mockError        error
+		mockRowsAffected int64
+		inputId          int64
+		expectingError   bool
+		expectedWrapped  error // 期望被包装的底层错误, 为 nil 时不校验
 	}
 
 	testCases := []testCase{
 		{
-			name:            "AddPointTime_Success",
-			mockErrorFirst:  nil,
-			mockErrorSave:   nil,
-			inputId:         1,
-			initialPicture:  &model.Picture{ID: 1, Url: "https://example.com/image.jpg", PointTimes: 2},
-			expectedPicture: &model.Picture{ID: 1, Url: "https://example.com/image.jpg", PointTimes: 3},
-			expectingError:  false,
+			name:             "AddPointTime_Success",
+			mockError:        nil,
+			mockRowsAffected: 1,
+			inputId:          1,
+			expectingError:   false,
 		},
 		{
-			name:            "AddPointTime_RecordNotFound",
-			mockErrorFirst:  gorm.ErrRecordNotFound,
-			mockErrorSave:   nil,
-			inputId:         2,
-			initialPicture:  nil,
-			expectedPicture: nil,
-			expectingError:  true,
+			name:             "AddPointTime_RecordNotFound",
+			mockError:        nil,
+			mockRowsAffected: 0,
+			inputId:          2,
+			expectingError:   true,
+			expectedWrapped:  gorm.ErrRecordNotFound,
 		},
 		{
-			name:            "AddPointTime_DBErrorOnSave",
-			mockErrorFirst:  nil,
-			mockErrorSave:   fmt.Errorf("db save error"),
-			inputId:         3,
-			initialPicture:  &model.Picture{ID: 3, Url: "https://example.com/image2.jpg", PointTimes: 5},
-			expectedPicture: nil,
-			expectingError:  true,
+			name:             "AddPointTime_DBError",
+			mockError:        fmt.Errorf("db error"),
+			mockRowsAffected: 0,
+			inputId:          3,
+			expectingError:   true,
 		},
 	}
 	defer mockey.UnPatchAll()
@@ -75,6 +68,9 @@ func TestDBLaunchScreen_AddPointTime(t *testing.T) {
 			mockGormDB := new(gorm.DB)
 			mockSnowflake := new(utils.Snowflake)
 			mockDBLaunchScreen := NewDBLaunchScreen(mockGormDB, mockSnowflake)
+
+			var gotColumn string
+			var gotValue interface{}
 
 			mockey.Mock((*gorm.DB).WithContext).To(func(ctx context.Context) *gorm.DB {
 				return mockGormDB
@@ -85,29 +81,14 @@ func TestDBLaunchScreen_AddPointTime(t *testing.T) {
 			mockey.Mock((*gorm.DB).Where).To(func(query interface{}, args ...interface{}) *gorm.DB {
 				return mockGormDB
 			}).Build()
-			mockey.Mock((*gorm.DB).First).To(func(dest interface{}, conds ...interface{}) *gorm.DB {
-				if tc.mockErrorFirst != nil {
-					mockGormDB.Error = tc.mockErrorFirst
+			mockey.Mock((*gorm.DB).UpdateColumn).To(func(column string, value interface{}) *gorm.DB {
+				gotColumn = column
+				gotValue = value
+				if tc.mockError != nil {
+					mockGormDB.Error = tc.mockError
 					return mockGormDB
 				}
-				if tc.initialPicture != nil {
-					initialPicture, ok := dest.(*model.Picture)
-					if ok {
-						*initialPicture = *tc.initialPicture
-					}
-				}
-				return mockGormDB
-			}).Build()
-
-			mockey.Mock((*gorm.DB).Save).To(func(value interface{}) *gorm.DB {
-				if tc.mockErrorSave != nil {
-					mockGormDB.Error = tc.mockErrorSave
-					return mockGormDB
-				}
-				if picture, ok := value.(*model.Picture); ok {
-					// 直接 tc.initialPicture.PointTimes++ 是无效的,原因未知
-					tc.initialPicture.PointTimes = picture.PointTimes
-				}
+				mockGormDB.RowsAffected = tc.mockRowsAffected
 				return mockGormDB
 			}).Build()
 
@@ -115,12 +96,15 @@ func TestDBLaunchScreen_AddPointTime(t *testing.T) {
 
 			if tc.expectingError {
 				assert.Error(t, err)
-				if tc.mockErrorFirst != nil || tc.mockErrorSave != nil {
-					assert.Contains(t, err.Error(), "dal.AddPointTime error")
+				assert.Contains(t, err.Error(), "dal.AddPointTime error")
+				if tc.expectedWrapped != nil {
+					assert.ErrorIs(t, err, tc.expectedWrapped)
 				}
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tc.expectedPicture.PointTimes, tc.initialPicture.PointTimes)
+				// 校验确实对 point_times 做了原子自增
+				assert.Equal(t, "point_times", gotColumn)
+				assert.Equal(t, gorm.Expr("point_times + 1"), gotValue)
 			}
 		})
 	}

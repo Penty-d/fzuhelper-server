@@ -20,15 +20,26 @@ import (
 	"context"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 )
 
 func (c *DBLaunchScreen) AddImageListShowTime(ctx context.Context, pictureList *[]model.Picture) error {
+	if len(*pictureList) == 0 {
+		return nil
+	}
+	// 内存中自增仅用于调用方响应展示, 数据库计数由下方原子自增完成
+	ids := make([]int64, 0, len(*pictureList))
 	for i := range *pictureList {
 		(*pictureList)[i].ShowTimes++
+		ids = append(ids, (*pictureList)[i].ID)
 	}
-	if err := c.client.WithContext(ctx).Table(constants.LaunchScreenTableName).Save(pictureList).Error; err != nil {
+	// 使用 UpdateColumn 原子自增, 避免并发下丢失计数或用旧值覆盖其他字段
+	if err := c.client.WithContext(ctx).Table(constants.LaunchScreenTableName).
+		Where("id IN ?", ids).
+		UpdateColumn("show_times", gorm.Expr("show_times + 1")).Error; err != nil {
 		return fmt.Errorf("dal.AddImageListShowTime error: %w", err)
 	}
 	return nil

@@ -21,6 +21,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -51,6 +52,9 @@ var (
 	Vendors              *vendors
 	Friend               *friend
 	runtimeViper         = viper.New()
+	// initialized 标记配置是否已成功加载过一次：
+	// 首次加载失败必须 Fatal 退出，而热更新重载失败时应保留旧配置继续运行，避免一次错误的配置推送杀死线上服务
+	initialized atomic.Bool
 )
 
 const (
@@ -95,13 +99,10 @@ func InitFromETCD(service string) {
 	}
 	configMapping(service)
 
-	// 设置持续监听
-	runtimeViper.OnConfigChange(func(e fsnotify.Event) {
-		// 我们无法确定监听到配置变更时是否已经初始化完毕，所以此处需要做一个判断
-		logger.Infof("config: notice config changed: %v\n", e.String())
-		configMapping(service) // 重新映射配置
-	})
-	runtimeViper.WatchConfig()
+	// NOTICE: etcd 模式不支持热更新。
+	// viper 的 WatchConfig 只监听本地配置文件，此处没有配置任何本地文件路径，
+	// watch goroutine 会因找不到文件直接退出，OnConfigChange 永远不会触发，
+	// 因此不再注册无效的监听（如确需热更可评估 WatchRemoteConfigOnChannel，但它只更新 viper 内部 kv，仍需自行触发 configMapping）
 }
 
 // InitFromConfigMap 用于从 k8s 的 ConfigMap 中初始化配置
@@ -128,7 +129,11 @@ func InitFromConfigMap(service string) {
 func configMapping(srv string) {
 	c := new(config)
 	if err := runtimeViper.Unmarshal(&c); err != nil {
-		// 由于这个函数会在配置重载时被再次触发，所以需要判断日志记录方式
+		// 热更新重载失败时保留旧配置继续运行，只有首次加载失败才 Fatal 退出
+		if initialized.Load() {
+			logger.Errorf("config.configMapping: config: unmarshal error on reload, keep old config: %v", err)
+			return
+		}
 		logger.Fatalf("config.configMapping: config: unmarshal error: %v", err)
 	}
 	Snowflake = &c.Snowflake
@@ -151,6 +156,7 @@ func configMapping(srv string) {
 	}
 	Vendors = &c.Vendors
 	Service = getService(srv)
+	initialized.Store(true)
 }
 
 func getService(name string) *service {

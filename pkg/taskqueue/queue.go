@@ -29,6 +29,10 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 )
 
+// TaskQueueMaxRetries QueueTask 失败重试次数上限，达到后放弃任务，
+// 避免永久性失败的任务无限重试且 taskMap/限流器条目永不释放
+const TaskQueueMaxRetries = 15
+
 type TaskQueue interface {
 	Start()
 	Add(key string, task QueueTask)
@@ -106,14 +110,26 @@ func (btq *BaseTaskQueue) worker() {
 			btq.workQueue.Done(key)
 		case QueueTask:
 			if err := task.Execute(); err != nil {
-				btq.workQueue.AddRateLimited(key)
-				logger.Errorf("QueueTask execute failed: %v", err)
+				if btq.workQueue.NumRequeues(key) >= TaskQueueMaxRetries {
+					// 达到重试上限后放弃任务并清理限流器与 taskMap 条目，避免无限重试和内存泄漏
+					logger.Errorf("QueueTask %s dropped after %d retries: %v", key, btq.workQueue.NumRequeues(key), err)
+					btq.workQueue.Forget(key)
+					btq.taskMap.Delete(key)
+				} else {
+					logger.Errorf("QueueTask execute failed: %v", err)
+					btq.workQueue.AddRateLimited(key)
+				}
 			} else {
+				// 成功后必须 Forget，否则限流器中按 key 记录的失败计数会永久残留
+				btq.workQueue.Forget(key)
 				btq.taskMap.Delete(key)
 			}
 			btq.workQueue.Done(key)
 		default:
 			logger.Errorf("BaseTaskQueue:Unknown task type，key: %v", key)
+			// 防御性清理：不调用 Done 会导致该 key 永远滞留在 processing 集合，之后同 key 的 Add 无法再被调度
+			btq.taskMap.Delete(key)
+			btq.workQueue.Done(key)
 		}
 	}
 }

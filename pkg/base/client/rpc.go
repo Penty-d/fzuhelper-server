@@ -19,9 +19,11 @@ package client
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/client/streamclient"
+	"github.com/cloudwego/kitex/pkg/discovery"
 	"github.com/cloudwego/kitex/pkg/remote/codec/thrift"
 	"github.com/cloudwego/kitex/pkg/transmeta"
 	"github.com/cloudwego/kitex/transport"
@@ -42,24 +44,32 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 )
 
+// sharedResolver 所有 RPC 客户端共享同一个 etcd resolver。
+// resolver 本身无状态可跨 client 复用，避免每个客户端各自建立一条 etcd 连接（连接/watch/goroutine 全部重复）。
+// NOTICE: 调用前必须保证 config.Etcd 已初始化（现有调用顺序满足）；OnceValues 会缓存首次错误，但错误路径最终都会 Fatalf 退出进程
+var sharedResolver = sync.OnceValues(func() (discovery.Resolver, error) {
+	return etcd.NewEtcdResolver([]string{config.Etcd.Addr})
+})
+
+// frugalCodec 使用 Frugal 进行解编码，codec 无状态可全局复用
+var frugalCodec = thrift.NewThriftCodecWithConfig(thrift.FrugalReadWrite)
+
 // 通用的RPC客户端初始化函数
 func initRPCClient[T any](serviceName string, newClientFunc func(string, ...client.Option) (T, error)) (*T, error) {
 	if config.Etcd == nil || config.Etcd.Addr == "" {
 		return nil, errors.New("config.Etcd.Addr is nil")
 	}
-	// 初始化Etcd Resolver
-	r, err := etcd.NewEtcdResolver([]string{config.Etcd.Addr})
+	// 获取共享的 Etcd Resolver
+	r, err := sharedResolver()
 	if err != nil {
 		return nil, fmt.Errorf("initRPCClient etcd.NewEtcdResolver failed: %w", err)
 	}
-	// 使用 Frugal 进行解编码
-	codec := thrift.NewThriftCodecWithConfig(thrift.FrugalReadWrite)
 	// 初始化具体的RPC客户端
 	client, err := newClientFunc(
 		serviceName,
 		client.WithResolver(r),
 		client.WithMuxConnection(constants.MuxConnection),
-		client.WithPayloadCodec(codec),
+		client.WithPayloadCodec(frugalCodec),
 		client.WithTransportProtocol(transport.TTHeaderFramed),
 		client.WithMetaHandler(transmeta.ClientTTHeaderHandler),
 		client.WithSuite(kitextracing.NewClientSuite()),
@@ -90,7 +100,7 @@ func InitLaunchScreenStreamRPC() (*launchscreenservice.StreamClient, error) {
 	if config.Etcd == nil || config.Etcd.Addr == "" {
 		return nil, errors.New("config.Etcd.Addr is nil")
 	}
-	r, err := etcd.NewEtcdResolver([]string{config.Etcd.Addr})
+	r, err := sharedResolver()
 	if err != nil {
 		return nil, fmt.Errorf("InitLaunchScreenStreamRPC etcd.NewEtcdResolver failed: %w", err)
 	}

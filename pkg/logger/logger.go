@@ -171,7 +171,7 @@ func (l *controlLogger) debug(msg string, fields ...zap.Field) {
 func (l *controlLogger) debugf(template string, args ...interface{}) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	l.logger.Info(fmt.Sprintf(template, args...))
+	l.logger.Debug(fmt.Sprintf(template, args...))
 }
 
 func (l *controlLogger) info(msg string, fields ...zap.Field) {

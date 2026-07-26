@@ -165,14 +165,18 @@ func FileToByteArray(file *multipart.FileHeader) (fileBuf [][]byte, err error) {
 
 	for {
 		buf := make([]byte, constants.StreamBufferSize)
-		_, err = fileContent.Read(buf)
+		// 必须按实际读到的字节数 n 截断，否则尾块会被零填充；
+		// Read 返回 n>0 且 err==io.EOF 时最后一段数据也需要保留
+		n, err := fileContent.Read(buf)
+		if n > 0 {
+			fileBuf = append(fileBuf, buf[:n])
+		}
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			return nil, errno.InternalServiceError
 		}
-		fileBuf = append(fileBuf, buf)
 	}
 	return fileBuf, nil
 }

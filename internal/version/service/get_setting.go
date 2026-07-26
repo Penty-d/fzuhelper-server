@@ -27,6 +27,7 @@ import (
 	"github.com/west2-online/fzuhelper-server/kitex_gen/version"
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
+	"github.com/west2-online/fzuhelper-server/pkg/singleflight"
 	"github.com/west2-online/fzuhelper-server/pkg/upyun"
 )
 
@@ -37,19 +38,25 @@ func (s *VersionService) GetCloudSetting(req *version.GetSettingRequest) (*[]byt
 		return nil, fmt.Errorf("VersionService.GetCloudSetting AddVisit error:%w", err)
 	}
 
-	// 获得Json
-	settingJson, err := upyun.URlGetFile(upyun.JoinFileName(cloudSettingFileName))
-	if err != nil {
-		return nil, fmt.Errorf("VersionService.GetCloudSetting error:%w", err)
-	}
-	noCommentSettingJson, err := getJSONWithoutComments(string(*settingJson))
-	if err != nil {
-		return nil, fmt.Errorf("VersionService.GetCloudSetting error:%w", err)
-	}
+	// 云控配置为全局数据，用 singleflight 合并并发请求的下载与解析；AddVisit 计数保持逐请求执行不受影响
+	cloudSettings, err := singleflight.Do(constants.SingleflightCloudSettingKey, func() (*pack.CloudSetting, error) {
+		// 获得Json
+		settingJson, err := upyun.URlGetFile(upyun.JoinFileName(cloudSettingFileName))
+		if err != nil {
+			return nil, err
+		}
+		noCommentSettingJson, err := getJSONWithoutComments(string(*settingJson))
+		if err != nil {
+			return nil, err
+		}
 
-	// 绑定结构体
-	cloudSettings := new(pack.CloudSetting)
-	err = json.Unmarshal([]byte(noCommentSettingJson), cloudSettings)
+		// 绑定结构体
+		settings := new(pack.CloudSetting)
+		if err = json.Unmarshal([]byte(noCommentSettingJson), settings); err != nil {
+			return nil, err
+		}
+		return settings, nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("VersionService.GetCloudSetting error:%w", err)
 	}
@@ -73,50 +80,44 @@ func (s *VersionService) GetCloudSetting(req *version.GetSettingRequest) (*[]byt
 // findMatchingPlan 查找匹配的计划,若无传递字段则默认该字段为匹配状态，出现未匹配则直接查找下一计划
 func findMatchingPlan(planList *[]pack.Plan, criteria *pack.Plan) (*pack.Plan, error) {
 	for _, plan := range *planList {
-		if plan.Name != nil && criteria.Name != nil {
-			matched, _ := regexp.MatchString(*plan.Name, *criteria.Name)
-			if !matched {
-				continue
-			}
+		if !matchRegexField(plan.Name, criteria.Name) {
+			continue
 		}
-		if plan.Account != nil && criteria.Account != nil {
-			matched, _ := regexp.MatchString(*plan.Account, *criteria.Account)
-			if !matched {
-				continue
-			}
+		if !matchRegexField(plan.Account, criteria.Account) {
+			continue
 		}
-		if plan.Version != nil && criteria.Version != nil {
-			// matched, _ := regexp.MatchString(*criteria.Version, *plan.Version)
-			matched, _ := regexp.MatchString(*plan.Version, *criteria.Version)
-			if !matched {
-				continue
-			}
+		if !matchRegexField(plan.Version, criteria.Version) {
+			continue
 		}
-		if plan.Phone != nil && criteria.Phone != nil {
-			matched, _ := regexp.MatchString(*plan.Phone, *criteria.Phone)
-			if !matched {
-				continue
-			}
+		if !matchRegexField(plan.Phone, criteria.Phone) {
+			continue
 		}
-		if plan.LoginType != nil && criteria.LoginType != nil {
-			matched, _ := regexp.MatchString(*plan.LoginType, *criteria.LoginType)
-			if !matched {
-				continue
-			}
+		if !matchRegexField(plan.LoginType, criteria.LoginType) {
+			continue
 		}
-		if plan.Beta != nil && criteria.Beta != nil {
-			if *plan.Beta != *criteria.Beta {
-				continue
-			}
+		if !matchBoolField(plan.Beta, criteria.Beta) {
+			continue
 		}
-		if plan.IsLogin != nil && criteria.IsLogin != nil {
-			if *plan.IsLogin != *criteria.IsLogin {
-				continue
-			}
+		if !matchBoolField(plan.IsLogin, criteria.IsLogin) {
+			continue
 		}
 		return &plan, nil
 	}
 	return nil, errno.NoMatchingPlanError
+}
+
+// matchRegexField 按正则匹配单个字段，任一侧未传递(nil)则视为匹配
+func matchRegexField(pattern, value *string) bool {
+	if pattern == nil || value == nil {
+		return true
+	}
+	matched, _ := regexp.MatchString(*pattern, *value)
+	return matched
+}
+
+// matchBoolField 比较单个布尔字段，任一侧未传递(nil)则视为匹配
+func matchBoolField(want, got *bool) bool {
+	return want == nil || got == nil || *want == *got
 }
 
 // getJSONWithoutComments 获得没有注释的jsonStr

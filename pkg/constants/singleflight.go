@@ -31,6 +31,9 @@ const (
 
 	SingleflightCloudKey = "cloud"
 
+	// 云控配置为全局数据，不依赖具体用户，可以使用固定 key 合并并发下载与解析。
+	SingleflightCloudSettingKey = "cloud_setting"
+
 	// Android 接口一次返回 release 和 beta 两份数据，使用独立 key 避免和单独版本查询混用。
 	SingleflightAndroidVersionKey = "android_version"
 )

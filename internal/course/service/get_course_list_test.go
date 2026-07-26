@@ -198,21 +198,19 @@ func TestGetCourseList(t *testing.T) {
 
 			mockey.Mock((*jwch.Student).GetSemesterCourses).Return(tc.mockCoursesReturn, tc.mockCoursesError).Build()
 
-			mockey.Mock((*cache.Cache).IsKeyExist).Return(tc.cacheExist).Build()
-			if tc.cacheExist {
-				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).To(
-					func(ctx context.Context, key string) ([]string, error) {
-						if tc.cacheTermsList != nil {
-							return tc.cacheTermsList, tc.cacheTermsGetError
-						}
-						return mockTerm.Terms, tc.cacheTermsGetError
-					},
-				).Build()
-
-				mockey.Mock((*coursecache.CacheCourse).GetCoursesCache).Return(mockCourses, tc.cacheCoursesGetError).Build()
-			} else {
-				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(nil, assert.AnError).Build()
-			}
+			// getter 自带未命中判定, 通过 found 返回值区分命中/未命中
+			mockey.Mock((*coursecache.CacheCourse).GetTermsCache).To(
+				func(ctx context.Context, key string) ([]string, bool, error) {
+					if !tc.cacheExist {
+						return nil, false, nil
+					}
+					if tc.cacheTermsList != nil {
+						return tc.cacheTermsList, true, tc.cacheTermsGetError
+					}
+					return mockTerm.Terms, true, tc.cacheTermsGetError
+				},
+			).Build()
+			mockey.Mock((*coursecache.CacheCourse).GetCoursesCache).Return(mockCourses, tc.cacheExist, tc.cacheCoursesGetError).Build()
 
 			mockey.Mock((*CourseService).GetAutoAdjustCourseList).Return([]*dbmodel.AutoAdjustCourse{}, nil).Build()
 
@@ -378,21 +376,19 @@ func TestGetCourseListYjsy(t *testing.T) {
 
 			mockey.Mock((*yjsy.Student).GetSemesterCourses).Return(tc.mockCoursesReturn, tc.mockCoursesError).Build()
 
-			mockey.Mock((*cache.Cache).IsKeyExist).Return(tc.cacheExist).Build()
-			if tc.cacheExist {
-				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).To(
-					func(ctx context.Context, key string) ([]string, error) {
-						if tc.cacheTermsList != nil {
-							return tc.cacheTermsList, tc.cacheTermsGetError
-						}
-						return mockTerm.Terms, tc.cacheTermsGetError
-					},
-				).Build()
-
-				mockey.Mock((*coursecache.CacheCourse).GetCoursesCacheYjsy).Return(mockCourses, tc.cacheCoursesGetError).Build()
-			} else {
-				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(nil, assert.AnError).Build()
-			}
+			// getter 自带未命中判定, 通过 found 返回值区分命中/未命中
+			mockey.Mock((*coursecache.CacheCourse).GetTermsCache).To(
+				func(ctx context.Context, key string) ([]string, bool, error) {
+					if !tc.cacheExist {
+						return nil, false, nil
+					}
+					if tc.cacheTermsList != nil {
+						return tc.cacheTermsList, true, tc.cacheTermsGetError
+					}
+					return mockTerm.Terms, true, tc.cacheTermsGetError
+				},
+			).Build()
+			mockey.Mock((*coursecache.CacheCourse).GetCoursesCacheYjsy).Return(mockCourses, tc.cacheExist, tc.cacheCoursesGetError).Build()
 
 			mockey.Mock((*taskqueue.BaseTaskQueue).Add).Return().Build()
 
@@ -483,10 +479,9 @@ func TestGetSemesterCourses(t *testing.T) {
 				CacheClient: new(cache.Cache),
 			}
 
-			mockey.Mock((*cache.Cache).IsKeyExist).Return(tc.cacheExist).Build()
-			if tc.cacheExist {
-				mockey.Mock((*coursecache.CacheCourse).GetCoursesCache).Return(jwchCourses, tc.cacheGetError).Build()
-			} else {
+			// getter 自带未命中判定, 通过 found 返回值区分命中/未命中
+			mockey.Mock((*coursecache.CacheCourse).GetCoursesCache).Return(jwchCourses, tc.cacheExist, tc.cacheGetError).Build()
+			if !tc.cacheExist {
 				mockey.Mock((*dbcourse.DBCourse).GetUserTermCourseByStuIdAndTerm).To(
 					func(ctx context.Context, stuIdArg string, termArg string) (*dbmodel.UserCourse, error) {
 						if tc.dbReturnNil {
@@ -609,7 +604,7 @@ func TestCourseToDatabase(t *testing.T) {
 			mockey.Mock((*taskqueue.BaseTaskQueue).Add).Return().Build()
 
 			courseService := NewCourseService(context.Background(), mockClientSet, new(taskqueue.BaseTaskQueue))
-			err := courseService.putCourseToDatabase(stuId, term, courses)
+			err := courseService.putCourseToDatabase(context.Background(), stuId, term, courses)
 
 			if tc.expectError != "" {
 				assert.ErrorContains(t, err, tc.expectError)

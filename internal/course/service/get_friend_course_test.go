@@ -249,7 +249,7 @@ func TestGetFriendCourse(t *testing.T) {
 			coursesCache:   []*jwch.Course(nil),
 			coursesYjsyErr: assert.AnError,
 			reqTerm:        "202401",
-			expectErr:      "Get courses fail",
+			expectErr:      "Get yjsy courses fail",
 		},
 		{
 			name:       "term from db not in recent two",
@@ -304,10 +304,10 @@ func TestGetFriendCourse(t *testing.T) {
 			}
 
 			mockey.Mock((*CourseService).GetAutoAdjustCourseList).Return([]*dbmodel.AutoAdjustCourse{}, nil).Build()
-			mockey.Mock((*cache.Cache).IsKeyExist).Return(tc.isKeyExistFn).Build()
-			mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(tc.termsCache, tc.termsCacheErr).Build()
-			mockey.Mock((*coursecache.CacheCourse).GetCoursesCache).Return(tc.coursesCache, tc.coursesCacheErr).Build()
-			mockey.Mock((*coursecache.CacheCourse).GetCoursesCacheYjsy).Return(tc.coursesYjsy, tc.coursesYjsyErr).Build()
+			// getter 自带未命中判定, 通过 found 返回值区分命中/未命中(isKeyExistFn 表示缓存是否命中)
+			mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(tc.termsCache, tc.isKeyExistFn, tc.termsCacheErr).Build()
+			mockey.Mock((*coursecache.CacheCourse).GetCoursesCache).Return(tc.coursesCache, tc.isKeyExistFn, tc.coursesCacheErr).Build()
+			mockey.Mock((*coursecache.CacheCourse).GetCoursesCacheYjsy).Return(tc.coursesYjsy, tc.isKeyExistFn, tc.coursesYjsyErr).Build()
 			mockey.Mock((*dbcourse.DBCourse).GetUserTermByStuId).Return(tc.termsDB, tc.termsDBErr).Build()
 			mockey.Mock((*dbcourse.DBCourse).GetUserTermCourseByStuIdAndTerm).Return(tc.dbCourse, tc.dbCourseErr).Build()
 

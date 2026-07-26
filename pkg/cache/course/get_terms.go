@@ -20,16 +20,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bytedance/sonic"
+	"github.com/west2-online/fzuhelper-server/pkg/cache/internal/codec"
 )
 
-func (c *CacheCourse) GetTermsCache(ctx context.Context, key string) (terms []string, err error) {
-	data, err := c.client.Get(ctx, key).Bytes()
+// GetTermsCache 获取学期列表缓存; key 不存在时返回 found=false 且不视为错误
+func (c *CacheCourse) GetTermsCache(ctx context.Context, key string) ([]string, bool, error) {
+	terms, found, err := codec.GetJSON[[]string](ctx, c.client, key)
 	if err != nil {
-		return nil, fmt.Errorf("dal.GetTermsCache: cache failed: %w", err)
+		return nil, false, fmt.Errorf("dal.GetTermsCache: cache failed: %w", err)
 	}
-	if err = sonic.Unmarshal(data, &terms); err != nil {
-		return nil, fmt.Errorf("dal.GetTermsCache: Unmarshal failed: %w", err)
-	}
-	return terms, nil
+	return terms, found, nil
 }

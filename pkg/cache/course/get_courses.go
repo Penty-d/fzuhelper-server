@@ -20,32 +20,25 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bytedance/sonic"
-
+	"github.com/west2-online/fzuhelper-server/pkg/cache/internal/codec"
 	"github.com/west2-online/jwch"
 	"github.com/west2-online/yjsy"
 )
 
-func (c *CacheCourse) GetCoursesCache(ctx context.Context, key string) (course []*jwch.Course, err error) {
-	course = make([]*jwch.Course, 0)
-	data, err := c.client.Get(ctx, key).Bytes()
+// GetCoursesCache 获取本科生课表缓存; key 不存在时返回 found=false 且不视为错误
+func (c *CacheCourse) GetCoursesCache(ctx context.Context, key string) ([]*jwch.Course, bool, error) {
+	course, found, err := codec.GetJSON[[]*jwch.Course](ctx, c.client, key)
 	if err != nil {
-		return nil, fmt.Errorf("dal.GetCoursesCache: cache failed: %w", err)
+		return nil, false, fmt.Errorf("dal.GetCoursesCache: cache failed: %w", err)
 	}
-	if err = sonic.Unmarshal(data, &course); err != nil {
-		return nil, fmt.Errorf("dal.GetCoursesCache: Unmarshal failed: %w", err)
-	}
-	return course, nil
+	return course, found, nil
 }
 
-func (c *CacheCourse) GetCoursesCacheYjsy(ctx context.Context, key string) (course []*yjsy.Course, err error) {
-	course = make([]*yjsy.Course, 0)
-	data, err := c.client.Get(ctx, key).Bytes()
+// GetCoursesCacheYjsy 获取研究生课表缓存; key 不存在时返回 found=false 且不视为错误
+func (c *CacheCourse) GetCoursesCacheYjsy(ctx context.Context, key string) ([]*yjsy.Course, bool, error) {
+	course, found, err := codec.GetJSON[[]*yjsy.Course](ctx, c.client, key)
 	if err != nil {
-		return nil, fmt.Errorf("dal.GetCoursesCacheYjsy: cache failed: %w", err)
+		return nil, false, fmt.Errorf("dal.GetCoursesCacheYjsy: cache failed: %w", err)
 	}
-	if err = sonic.Unmarshal(data, &course); err != nil {
-		return nil, fmt.Errorf("dal.GetCoursesCacheYjsy: Unmarshal failed: %w", err)
-	}
-	return course, nil
+	return course, found, nil
 }

@@ -108,11 +108,11 @@ func TestGetTermsList(t *testing.T) {
 				}
 			}).Build()
 			mockey.Mock((*coursecache.CacheCourse).SetTermsCache).Return(tc.mockSetCacheErr).Build()
-			mockey.Mock((*cache.Cache).IsKeyExist).Return(tc.cacheExist).Build()
+			// getter 自带未命中判定, 通过 found 返回值区分命中/未命中
 			if tc.cacheExist {
-				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(successTerm.Terms, tc.cacheGetError).Build()
+				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(successTerm.Terms, true, tc.cacheGetError).Build()
 			} else {
-				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(nil, assert.AnError).Build()
+				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(nil, false, nil).Build()
 			}
 
 			ctx := customContext.WithLoginData(context.Background(), mockLoginData)
@@ -197,11 +197,11 @@ func TestGetTermsListYjsy(t *testing.T) {
 				}
 			}).Build()
 			mockey.Mock((*coursecache.CacheCourse).SetTermsCache).Return(tc.mockSetCacheErr).Build()
-			mockey.Mock((*cache.Cache).IsKeyExist).Return(tc.cacheExist).Build()
+			// getter 自带未命中判定, 通过 found 返回值区分命中/未命中
 			if tc.cacheExist {
-				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(successTerm.Terms, tc.cacheGetError).Build()
+				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(successTerm.Terms, true, tc.cacheGetError).Build()
 			} else {
-				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(nil, assert.AnError).Build()
+				mockey.Mock((*coursecache.CacheCourse).GetTermsCache).Return(nil, false, nil).Build()
 			}
 
 			ctx := customContext.WithLoginData(context.Background(), mockLoginData)
@@ -290,7 +290,7 @@ func TestPutTermToDatabase(t *testing.T) {
 			mockey.Mock((*dbcourse.DBCourse).UpdateUserTerm).Return(nil, tc.updateErr).Build()
 
 			svc := NewCourseService(context.Background(), mockClientSet, nil)
-			err := svc.putTermToDatabase(stuId, tc.termList)
+			err := svc.putTermToDatabase(context.Background(), stuId, tc.termList)
 			if tc.expectErr != "" {
 				assert.ErrorContains(t, err, tc.expectErr)
 			} else {

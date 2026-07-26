@@ -28,6 +28,7 @@ import (
 	kitexModel "github.com/west2-online/fzuhelper-server/kitex_gen/model"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/user"
 	"github.com/west2-online/fzuhelper-server/pkg/base/context"
+	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
@@ -40,7 +41,7 @@ func (s *CourseService) GetFriendCourse(req *course.GetFriendCourseRequest, logi
 	// 验证好友
 	resp, err := s.userClient.VerifyFriend(s.ctx, &user.VerifyFriendRequest{Id: stuId, FriendId: req.Id})
 	if err != nil {
-		return nil, fmt.Errorf("CourseService.gerFriendCourse: verify friend failed: %w", err)
+		return nil, fmt.Errorf("service.GetFriendCourse: verify friend failed: %w", err)
 	}
 	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
@@ -48,17 +49,18 @@ func (s *CourseService) GetFriendCourse(req *course.GetFriendCourseRequest, logi
 	if !resp.FriendExist {
 		return nil, fmt.Errorf("只能查看好友的课表")
 	}
-	termKey := fmt.Sprintf("terms:%s", req.Id)
+	termKey := fmt.Sprintf(constants.TermsKeyFormat, req.Id)
 	/* 这里如果terms Cache没命中 无法验证term的合法性 也就会拒绝返回好友课表
 	   而term也是会在学生刷新课表时缓存 并且term似乎目前并不在db内存储
 	   此外因为jwch与yjsy的区别 term也有两个结构 这边就直接用string来处理了
 	*/
 	var terms []string
-	if s.cache.IsKeyExist(s.ctx, termKey) {
-		termsList, err := s.cache.Course.GetTermsCache(s.ctx, termKey)
-		if err != nil {
-			return nil, fmt.Errorf("service.GetFriendCourse: Get term fail: %w", err)
-		}
+	// getter 自带未命中判定, 单次 round-trip 完成读缓存; 过期竞态会自然回源而不是报错
+	termsList, termsOk, err := s.cache.Course.GetTermsCache(s.ctx, termKey)
+	if err != nil {
+		return nil, fmt.Errorf("service.GetFriendCourse: Get term fail: %w", err)
+	}
+	if termsOk {
 		terms = termsList
 	} else {
 		dbTerms, err := s.db.Course.GetUserTermByStuId(s.ctx, req.Id)
@@ -73,26 +75,9 @@ func (s *CourseService) GetFriendCourse(req *course.GetFriendCourseRequest, logi
 	if terms == nil {
 		return nil, errno.NewErrNo(errno.InternalServiceErrorCode, "service.GetFriendCourse: Friend termList empty")
 	}
-	/*
-		由于本科生查课表时正确传参是202501、研究生则是2024-2025-1
-		为防止因此导致term无效。下面做了一个映射的操作
-	*/
-	var reqTerm string
-	switch {
-	case slices.Contains(terms, req.Term):
-		reqTerm = req.Term
-	case utils.IsYjsyTerm(req.Term):
-		if !slices.Contains(terms, utils.MapYjsyTerm(req.Term)) {
-			return nil, errors.New("service.GetFriendCourse: Invalid term")
-		}
-		reqTerm = utils.MapYjsyTerm(req.Term)
-	case utils.IsJwchTerm(req.Term):
-		if !slices.Contains(terms, utils.MapJwchTerm(req.Term)) {
-			return nil, errors.New("service.GetFriendCourse: Invalid term")
-		}
-		reqTerm = utils.MapJwchTerm(req.Term)
-	default:
-		return nil, errors.New("service.GetFriendCourse: Invalid term")
+	reqTerm, err := resolveFriendTerm(terms, req.Term)
+	if err != nil {
+		return nil, err
 	}
 	if !slices.Contains(pack.GetTop2TermLists(terms), reqTerm) {
 		return nil, errors.New("只能查看好友最近两个学期的课表")
@@ -100,27 +85,30 @@ func (s *CourseService) GetFriendCourse(req *course.GetFriendCourseRequest, logi
 	/* cache 返回的两个course结构有区别 而目前判别研究生身份的方法需要loginData.Id
 	在cache命中的情况下 先后两次尝试获取并返回课表
 	*/
-	courseKey := fmt.Sprintf("course:%s:%s", req.Id, reqTerm)
-	if s.cache.IsKeyExist(s.ctx, courseKey) {
-		courses, err := s.cache.Course.GetCoursesCache(s.ctx, courseKey)
-		if err != nil {
-			return nil, fmt.Errorf("service.GetFriendCourse: Get courses fail: %w", err)
-		}
-		if courses != nil {
-			return s.removeDuplicateCourses(pack.BuildCourse(courses)), nil
+	courseKey := fmt.Sprintf(constants.CourseListKeyFormat, req.Id, reqTerm)
+	cachedCourses, coursesOk, err := s.cache.Course.GetCoursesCache(s.ctx, courseKey)
+	if err != nil {
+		return nil, fmt.Errorf("service.GetFriendCourse: Get courses fail: %w", err)
+	}
+	if coursesOk {
+		if cachedCourses != nil {
+			return s.removeDuplicateCourses(pack.BuildCourse(cachedCourses)), nil
 		}
 		// cache 命中却没有course数据 做出查找研究生课表的尝试
-		yjsyCourses, err := s.cache.Course.GetCoursesCacheYjsy(s.ctx, courseKey)
+		yjsyCourses, yjsyOk, err := s.cache.Course.GetCoursesCacheYjsy(s.ctx, courseKey)
 		if err != nil {
-			return nil, fmt.Errorf("service.GetYjsyFriendCourse: Get courses fail: %w", err)
+			return nil, fmt.Errorf("service.GetFriendCourse: Get yjsy courses fail: %w", err)
 		}
-		return pack.BuildCourseYjsy(yjsyCourses), nil
+		// 研究生课表缓存也未命中时不能返回空课表，继续走下方数据库回源
+		if yjsyOk {
+			return pack.BuildCourseYjsy(yjsyCourses), nil
+		}
 	}
 
 	var courses *model.UserCourse
 	courses, err = s.db.Course.GetUserTermCourseByStuIdAndTerm(s.ctx, req.Id, reqTerm)
 	if err != nil {
-		return nil, fmt.Errorf("service.GetSemesterCourses: Get courses fail: %w", err)
+		return nil, fmt.Errorf("service.GetFriendCourse: Get courses fail: %w", err)
 	}
 	if courses == nil {
 		return nil, fmt.Errorf("暂无好友课表信息，快通知好友登录App刷新课表吧")
@@ -128,7 +116,7 @@ func (s *CourseService) GetFriendCourse(req *course.GetFriendCourseRequest, logi
 	list := make([]*kitexModel.Course, 0)
 	if courses.TermCourses != "" {
 		if err = sonic.Unmarshal([]byte(courses.TermCourses), &list); err != nil {
-			return nil, fmt.Errorf("service.GetSemesterCourses: Unmarshal fail: %w", err)
+			return nil, fmt.Errorf("service.GetFriendCourse: Unmarshal fail: %w", err)
 		}
 	}
 	// 只处理本科生的调课信息
@@ -144,4 +132,26 @@ func (s *CourseService) GetFriendCourse(req *course.GetFriendCourseRequest, logi
 		}
 	}
 	return list, nil
+}
+
+// resolveFriendTerm 将请求的学期映射为好友学期列表中的合法学期。
+// 由于本科生查课表时正确传参是202501、研究生则是2024-2025-1
+// 为防止因此导致term无效。下面做了一个映射的操作
+func resolveFriendTerm(terms []string, reqTerm string) (string, error) {
+	switch {
+	case slices.Contains(terms, reqTerm):
+		return reqTerm, nil
+	case utils.IsYjsyTerm(reqTerm):
+		if !slices.Contains(terms, utils.MapYjsyTerm(reqTerm)) {
+			return "", errors.New("service.GetFriendCourse: Invalid term")
+		}
+		return utils.MapYjsyTerm(reqTerm), nil
+	case utils.IsJwchTerm(reqTerm):
+		if !slices.Contains(terms, utils.MapJwchTerm(reqTerm)) {
+			return "", errors.New("service.GetFriendCourse: Invalid term")
+		}
+		return utils.MapJwchTerm(reqTerm), nil
+	default:
+		return "", errors.New("service.GetFriendCourse: Invalid term")
+	}
 }

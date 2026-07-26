@@ -17,6 +17,7 @@ limitations under the License.
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -29,7 +30,7 @@ import (
 	"github.com/west2-online/fzuhelper-server/kitex_gen/course"
 	kitexModel "github.com/west2-online/fzuhelper-server/kitex_gen/model"
 	"github.com/west2-online/fzuhelper-server/pkg/base"
-	"github.com/west2-online/fzuhelper-server/pkg/base/context"
+	customContext "github.com/west2-online/fzuhelper-server/pkg/base/context"
 	"github.com/west2-online/fzuhelper-server/pkg/cache"
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
@@ -40,32 +41,66 @@ import (
 	"github.com/west2-online/yjsy"
 )
 
+// getCachedCourses 读取本科生课表缓存。只有最新两个学期的课程会被缓存，
+// 学期缓存缺失、请求学期不在缓存范围内或课表缓存未命中时均返回 hit=false，由调用方回源
+func (s *CourseService) getCachedCourses(termKey, courseKey, term string) ([]*jwch.Course, bool, error) {
+	termsList, termsOk, err := s.cache.Course.GetTermsCache(s.ctx, termKey)
+	if err != nil {
+		return nil, false, fmt.Errorf("service.GetCourseList: Get term fail: %w", err)
+	}
+	if !termsOk {
+		return nil, false, nil
+	}
+	if !slices.Contains(pack.GetTop2Terms(&jwch.Term{Terms: termsList}).Terms, term) {
+		return nil, false, nil
+	}
+
+	courses, coursesOk, err := s.cache.Course.GetCoursesCache(s.ctx, courseKey)
+	if err != nil {
+		return nil, false, fmt.Errorf("service.GetCourseList: Get courses fail: %w", err)
+	}
+	return courses, coursesOk, nil
+}
+
+// getCachedCoursesYjsy 读取研究生课表缓存，语义同 getCachedCourses
+func (s *CourseService) getCachedCoursesYjsy(termKey, courseKey, term string) ([]*yjsy.Course, bool, error) {
+	termsList, termsOk, err := s.cache.Course.GetTermsCache(s.ctx, termKey)
+	if err != nil {
+		return nil, false, fmt.Errorf("service.GetCourseListYjsy: Get terms fail: %w", err)
+	}
+	if !termsOk {
+		return nil, false, nil
+	}
+	if !slices.Contains(pack.GetTop2TermsYjsy(&yjsy.Term{Terms: termsList}).Terms, term) {
+		return nil, false, nil
+	}
+
+	courses, coursesOk, err := s.cache.Course.GetCoursesCacheYjsy(s.ctx, courseKey)
+	if err != nil {
+		return nil, false, fmt.Errorf("service.GetCourseListYjsy: Get courses fail: %w", err)
+	}
+	return courses, coursesOk, nil
+}
+
 func (s *CourseService) GetCourseList(req *course.CourseListRequest, loginData *kitexModel.LoginData) ([]*kitexModel.Course, error) {
 	var err error
-	stuId := context.ExtractIDFromLoginData(loginData)
-	termKey := fmt.Sprintf("terms:%s", stuId)
-	courseKey := fmt.Sprintf("course:%s:%s", stuId, req.Term)
+	stuId := customContext.ExtractIDFromLoginData(loginData)
+	termKey := fmt.Sprintf(constants.TermsKeyFormat, stuId)
+	courseKey := fmt.Sprintf(constants.CourseListKeyFormat, stuId, req.Term)
 	terms := new(jwch.Term)
 	// 学期缓存存在
 	isRefresh := false
 	if req.IsRefresh != nil {
 		isRefresh = *req.IsRefresh
 	}
-	// 不刷新且cache存在
-	if !isRefresh && s.cache.IsKeyExist(s.ctx, termKey) {
-		termsList, err := s.cache.Course.GetTermsCache(s.ctx, termKey)
+	// 不刷新时先读缓存; getter 自带未命中判定, 过期竞态会自然回源而不是报错
+	if !isRefresh {
+		cachedCourses, hit, err := s.getCachedCourses(termKey, courseKey, req.Term)
 		if err != nil {
-			return nil, fmt.Errorf("service.GetCourseList: Get term fail: %w", err)
+			return nil, err
 		}
-		terms.Terms = termsList
-		// 只有最新的两个学期的课程才会被放入缓存
-		if slices.Contains(pack.GetTop2Terms(terms).Terms, req.Term) &&
-			s.cache.IsKeyExist(s.ctx, courseKey) {
-			courses, err := s.cache.Course.GetCoursesCache(s.ctx, courseKey)
-			if err != nil {
-				return nil, fmt.Errorf("service.GetCourseList: Get courses fail: %w", err)
-			}
-			return s.removeDuplicateCourses(pack.BuildCourse(courses)), nil
+		if hit {
+			return s.removeDuplicateCourses(pack.BuildCourse(cachedCourses)), nil
 		}
 	}
 
@@ -86,11 +121,15 @@ func (s *CourseService) GetCourseList(req *course.CourseListRequest, loginData *
 		return nil, fmt.Errorf("service.GetCourseList: Get semester courses failed: %w", err)
 	}
 
+	// 异步任务在 handler 返回后才执行，提前捕获与请求解耦的 ctx（保留 trace 等值、剥离取消传播），
+	// 避免闭包继续使用可能已被框架回收的请求级上下文
+	taskCtx := context.WithoutCancel(s.ctx)
+
 	// async put course list to db
 	// 数据库存储原始的课表信息（不包含调课信息）
 	originalCourses := pack.BuildCourse(courses)
 	s.taskQueue.Add(fmt.Sprintf("putCourse:%s", stuId), taskqueue.QueueTask{Execute: func() error {
-		return s.putCourseToDatabase(stuId, req.Term, originalCourses)
+		return s.putCourseToDatabase(taskCtx, stuId, req.Term, originalCourses)
 	}})
 
 	adjustCourses, err := s.GetAutoAdjustCourseList(req.Term)
@@ -110,24 +149,24 @@ func (s *CourseService) GetCourseList(req *course.CourseListRequest, loginData *
 		// async put course list to cache
 		// 缓存存储调课后的课表信息
 		s.taskQueue.Add(courseKey, taskqueue.QueueTask{Execute: func() error {
-			return cache.SetSliceCache(s.cache, s.ctx, courseKey, courses,
+			return cache.SetSliceCache(s.cache, taskCtx, courseKey, courses,
 				constants.CourseTermsKeyExpire, "Course.SetCourseCache")
 		}})
 		s.taskQueue.Add(termKey, taskqueue.QueueTask{Execute: func() error {
-			return cache.SetValueSliceCache(s.cache, s.ctx, termKey, terms.Terms, constants.CourseTermsKeyExpire, "Course.SetTermsCache")
+			return cache.SetValueSliceCache(s.cache, taskCtx, termKey, terms.Terms, constants.CourseTermsKeyExpire, "Course.SetTermsCache")
 		}})
 	}
 
 	// 学期列表异步存库
 	s.taskQueue.Add(fmt.Sprintf("putTerms:%s", stuId), taskqueue.QueueTask{Execute: func() error {
-		return s.putTermToDatabase(stuId, pack.BuildTermOnDB(terms.Terms))
+		return s.putTermToDatabase(taskCtx, stuId, pack.BuildTermOnDB(terms.Terms))
 	}})
 
 	return s.removeDuplicateCourses(pack.BuildCourse(courses)), nil
 }
 
-func (s *CourseService) putCourseToDatabase(stuId string, term string, courses []*kitexModel.Course) error {
-	old, err := s.db.Course.GetUserTermCourseSha256ByStuIdAndTerm(s.ctx, stuId, term)
+func (s *CourseService) putCourseToDatabase(ctx context.Context, stuId string, term string, courses []*kitexModel.Course) error {
+	old, err := s.db.Course.GetUserTermCourseSha256ByStuIdAndTerm(ctx, stuId, term)
 	if err != nil {
 		return err
 	}
@@ -145,7 +184,7 @@ func (s *CourseService) putCourseToDatabase(stuId string, term string, courses [
 			return err
 		}
 
-		_, err = s.db.Course.CreateUserTermCourse(s.ctx, &model.UserCourse{
+		_, err = s.db.Course.CreateUserTermCourse(ctx, &model.UserCourse{
 			Id:                dbId,
 			StuId:             stuId,
 			Term:              term,
@@ -156,7 +195,7 @@ func (s *CourseService) putCourseToDatabase(stuId string, term string, courses [
 			return err
 		}
 	} else if old.TermCoursesSha256 != newSha256 {
-		_, err = s.db.Course.UpdateUserTermCourse(s.ctx, &model.UserCourse{
+		_, err = s.db.Course.UpdateUserTermCourse(ctx, &model.UserCourse{
 			Id:                old.Id,
 			TermCourses:       json,
 			TermCoursesSha256: newSha256,
@@ -172,29 +211,23 @@ func (s *CourseService) putCourseToDatabase(stuId string, term string, courses [
 func (s *CourseService) GetCourseListYjsy(req *course.CourseListRequest, loginData *kitexModel.LoginData) ([]*kitexModel.Course, error) {
 	var err error
 
-	stuId := context.ExtractIDFromLoginData(loginData)
-	termKey := fmt.Sprintf("terms:%s", stuId)
-	courseKey := fmt.Sprintf("course:%s:%s", stuId, req.Term)
+	stuId := customContext.ExtractIDFromLoginData(loginData)
+	termKey := fmt.Sprintf(constants.TermsKeyFormat, stuId)
+	courseKey := fmt.Sprintf(constants.CourseListKeyFormat, stuId, req.Term)
 	terms := new(yjsy.Term)
 	// 学期缓存存在
 	isRefresh := false
 	if req.IsRefresh != nil {
 		isRefresh = *req.IsRefresh
 	}
-	if !isRefresh && s.cache.IsKeyExist(s.ctx, termKey) {
-		termsList, err := s.cache.Course.GetTermsCache(s.ctx, termKey)
+	// 不刷新时先读缓存; getter 自带未命中判定, 过期竞态会自然回源而不是报错
+	if !isRefresh {
+		cachedCourses, hit, err := s.getCachedCoursesYjsy(termKey, courseKey, req.Term)
 		if err != nil {
-			return nil, fmt.Errorf("service.GetCourseListYjsy: Get terms fail: %w", err)
+			return nil, err
 		}
-		terms.Terms = termsList
-
-		// 检查是否有该学期的课程缓存
-		if slices.Contains(pack.GetTop2TermsYjsy(terms).Terms, req.Term) && s.cache.IsKeyExist(s.ctx, courseKey) {
-			courses, err := s.cache.Course.GetCoursesCacheYjsy(s.ctx, courseKey)
-			if err != nil {
-				return nil, fmt.Errorf("service.GetCourseListYjsy: Get courses fail: %w", err)
-			}
-			return pack.BuildCourseYjsy(courses), nil
+		if hit {
+			return pack.BuildCourseYjsy(cachedCourses), nil
 		}
 	}
 
@@ -216,24 +249,27 @@ func (s *CourseService) GetCourseListYjsy(req *course.CourseListRequest, loginDa
 		return nil, fmt.Errorf("service.GetCourseListYjsy: Get semester courses failed: %w", err)
 	}
 
+	// 异步任务在 handler 返回后才执行，提前捕获与请求解耦的 ctx，避免复用已被框架回收的请求级上下文
+	taskCtx := context.WithoutCancel(s.ctx)
+
 	// 如果是前两个学期，异步缓存课程列表
 	if slices.Contains(pack.GetTop2TermsYjsy(terms).Terms, req.Term) {
 		s.taskQueue.Add(courseKey, taskqueue.QueueTask{Execute: func() error {
-			return cache.SetSliceCache(s.cache, s.ctx, courseKey, courses,
+			return cache.SetSliceCache(s.cache, taskCtx, courseKey, courses,
 				constants.CourseTermsKeyExpire, "Course.SetCourseCache")
 		}})
 		s.taskQueue.Add(termKey, taskqueue.QueueTask{Execute: func() error {
-			return cache.SetValueSliceCache(s.cache, s.ctx, termKey, terms.Terms, constants.CourseTermsKeyExpire, "Course.SetTermsCache")
+			return cache.SetValueSliceCache(s.cache, taskCtx, termKey, terms.Terms, constants.CourseTermsKeyExpire, "Course.SetTermsCache")
 		}})
 	}
 
 	// 异步将课程列表存入数据库
 	s.taskQueue.Add(fmt.Sprintf("putCourse:%s", stuId), taskqueue.QueueTask{Execute: func() error {
-		return s.putCourseToDatabase(stuId, req.Term, pack.BuildCourseYjsy(courses))
+		return s.putCourseToDatabase(taskCtx, stuId, req.Term, pack.BuildCourseYjsy(courses))
 	}})
 	// 学期列表异步存库
 	s.taskQueue.Add(fmt.Sprintf("putTerms:%s", stuId), taskqueue.QueueTask{Execute: func() error {
-		return s.putTermToDatabase(stuId, pack.BuildTermOnDB(terms.Terms))
+		return s.putTermToDatabase(taskCtx, stuId, pack.BuildTermOnDB(terms.Terms))
 	}})
 
 	return pack.BuildCourseYjsy(courses), nil
@@ -268,13 +304,14 @@ func (s *CourseService) removeDuplicateCourses(courses []*kitexModel.Course) []*
 }
 
 func (s *CourseService) getSemesterCourses(stuID string, term string, isGraduate bool) (course []*kitexModel.Course, err error) {
-	courseKey := fmt.Sprintf("course:%s:%s", stuID, term)
-	if s.cache.IsKeyExist(s.ctx, courseKey) {
-		courses, err := s.cache.Course.GetCoursesCache(s.ctx, courseKey)
-		if err != nil {
-			return nil, fmt.Errorf("service.GetSemesterCourses: Get courses fail: %w", err)
-		}
-		return s.removeDuplicateCourses(pack.BuildCourse(courses)), nil
+	courseKey := fmt.Sprintf(constants.CourseListKeyFormat, stuID, term)
+	// getter 自带未命中判定, 过期竞态会自然回源而不是报错
+	cachedCourses, ok, err := s.cache.Course.GetCoursesCache(s.ctx, courseKey)
+	if err != nil {
+		return nil, fmt.Errorf("service.GetSemesterCourses: Get courses fail: %w", err)
+	}
+	if ok {
+		return s.removeDuplicateCourses(pack.BuildCourse(cachedCourses)), nil
 	}
 	// 从数据中获取课程表
 	var courses *model.UserCourse
@@ -308,9 +345,10 @@ func (s *CourseService) getSemesterCourses(stuID string, term string, isGraduate
 		}
 	}
 
-	// 写入 cache
+	// 写入 cache；异步任务在 handler 返回后才执行，使用与请求解耦的 ctx
+	taskCtx := context.WithoutCancel(s.ctx)
 	s.taskQueue.Add(courseKey, taskqueue.QueueTask{Execute: func() error {
-		return cache.SetSliceCache(s.cache, s.ctx, courseKey, list,
+		return cache.SetSliceCache(s.cache, taskCtx, courseKey, list,
 			constants.CourseTermsKeyExpire, "Course.SetCourseCache")
 	}})
 	return list, nil

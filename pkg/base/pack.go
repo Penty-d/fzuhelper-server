@@ -48,6 +48,23 @@ func BuildSuccessResp() *model.BaseResp {
 	return BuildBaseResp(nil) // 直接调用原始函数，传入 nil 表示无错误
 }
 
+// respWithBase 约束所有携带 BaseResp 的 kitex 响应类型
+type respWithBase interface {
+	SetBase(base *model.BaseResp)
+}
+
+// Fail 填充错误 BaseResp 并按 kitex 约定返回 (resp, nil)
+func Fail[T respWithBase](resp T, err error) (T, error) {
+	resp.SetBase(BuildBaseResp(err))
+	return resp, nil
+}
+
+// OK 填充成功 BaseResp 并返回 resp
+func OK[T respWithBase](resp T) T {
+	resp.SetBase(BuildSuccessResp())
+	return resp
+}
+
 func LogError(err error) {
 	if err == nil {
 		return

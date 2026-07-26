@@ -23,8 +23,18 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
+	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 )
+
+// mockResp 模拟携带 BaseResp 的 kitex 响应类型
+type mockResp struct {
+	Base *model.BaseResp
+}
+
+func (m *mockResp) SetBase(val *model.BaseResp) {
+	m.Base = val
+}
 
 func TestBuildBaseResp(t *testing.T) {
 	Convey("TestBuildBaseResp", t, func() {
@@ -48,6 +58,28 @@ func TestBuildSuccessResp(t *testing.T) {
 		r := BuildSuccessResp()
 		So(r.Code, ShouldEqual, int64(errno.SuccessCode))
 		So(r.Msg, ShouldEqual, errno.Success.ErrorMsg)
+	})
+}
+
+func TestFail(t *testing.T) {
+	Convey("TestFail", t, func() {
+		resp, err := Fail(new(mockResp), fmt.Errorf("ok"))
+		So(err, ShouldBeNil)
+		So(resp.Base.Code, ShouldEqual, int64(errno.InternalServiceErrorCode))
+		So(resp.Base.Msg, ShouldEqual, "ok")
+
+		resp, err = Fail(new(mockResp), errno.NewErrNo(200, "ok"))
+		So(err, ShouldBeNil)
+		So(resp.Base.Code, ShouldEqual, int64(200))
+		So(resp.Base.Msg, ShouldEqual, "ok")
+	})
+}
+
+func TestOK(t *testing.T) {
+	Convey("TestOK", t, func() {
+		resp := OK(new(mockResp))
+		So(resp.Base.Code, ShouldEqual, int64(errno.SuccessCode))
+		So(resp.Base.Msg, ShouldEqual, errno.Success.ErrorMsg)
 	})
 }
 

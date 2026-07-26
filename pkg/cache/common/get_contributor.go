@@ -18,6 +18,7 @@ package common
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/bytedance/sonic"
 
@@ -25,14 +26,31 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 )
 
-func (c *CacheCommon) GetContributorInfo(ctx context.Context, key string) (info []*model.Contributor, err error) {
-	data, err := c.client.Get(ctx, key).Bytes()
-	if err != nil {
-		return nil, errno.Errorf(errno.InternalJSONErrorCode, "dal.GetContributorInfo: Get contributor info info failed: %v", err)
+// GetContributorsInfo 通过一次 MGET 批量获取多个 key 的贡献者信息，避免逐 key 多次串行 round-trip
+func (c *CacheCommon) GetContributorsInfo(ctx context.Context, keys []string) (map[string][]*model.Contributor, error) {
+	// MGET 不接受空参数列表，提前短路
+	if len(keys) == 0 {
+		return map[string][]*model.Contributor{}, nil
 	}
-	err = sonic.Unmarshal(data, &info)
+	vals, err := c.client.MGet(ctx, keys...).Result()
 	if err != nil {
-		return nil, errno.Errorf(errno.InternalJSONErrorCode, "dal.GetContributorInfo: Unmarshal contributor info failed: %v", err)
+		return nil, errno.Errorf(errno.InternalDatabaseErrorCode, "dal.GetContributorsInfo: MGet contributor info failed: %v", err)
 	}
-	return info, nil
+	contributors := make(map[string][]*model.Contributor, len(keys))
+	for i, val := range vals {
+		// MGET 对不存在的 key 返回 nil，报错文案与原先 service 层逐 key 校验保持一致
+		if val == nil {
+			return nil, fmt.Errorf("service.GetContributorInfo: %s not exist", keys[i])
+		}
+		data, ok := val.(string)
+		if !ok {
+			return nil, errno.Errorf(errno.InternalJSONErrorCode, "dal.GetContributorsInfo: unexpected value type for key %s", keys[i])
+		}
+		var info []*model.Contributor
+		if err = sonic.Unmarshal([]byte(data), &info); err != nil {
+			return nil, errno.Errorf(errno.InternalJSONErrorCode, "dal.GetContributorsInfo: Unmarshal contributor info failed: %v", err)
+		}
+		contributors[keys[i]] = info
+	}
+	return contributors, nil
 }

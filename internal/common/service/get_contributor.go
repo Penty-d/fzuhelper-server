@@ -17,8 +17,6 @@ limitations under the License.
 package service
 
 import (
-	"fmt"
-
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 )
@@ -31,22 +29,10 @@ func (s *CommonService) GetContributorInfo() (map[string][]*model.Contributor, e
 		constants.ContributorYJSYKey,
 	}
 
-	contributors := make(map[string][]*model.Contributor)
-
-	// 遍历四个 key，依次从缓存中获取数据
-	for _, key := range contributorKeys {
-		if ok := s.cache.IsKeyExist(s.ctx, key); !ok {
-			return nil, fmt.Errorf("service.GetContributorInfo: %s not exist", key)
-		}
-
-		// 获取当前 key 对应的 contributor 数据
-		contributorInfo, err := s.cache.Common.GetContributorInfo(s.ctx, key)
-		if err != nil {
-			return nil, fmt.Errorf("service.GetContributorInfo: failed to get contributor info for key %s: %w", key, err)
-		}
-
-		// 将数据存入返回结果 map 中
-		contributors[key] = contributorInfo
+	// 一次 MGET 批量取回全部 key 的数据，替代逐 key EXISTS+GET 的多次串行 round-trip
+	contributors, err := s.cache.Common.GetContributorsInfo(s.ctx, contributorKeys)
+	if err != nil {
+		return nil, err
 	}
 
 	return contributors, nil

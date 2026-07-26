@@ -18,6 +18,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/bytedance/mockey"
@@ -33,16 +34,11 @@ import (
 
 func TestGetContributorInfo(t *testing.T) {
 	type testCase struct {
-		name           string
-		mockFileResult map[string][]*model.Contributor
-		mockFileError  error
-		expectResult   map[string][]*model.Contributor
-		expectError    string
-
-		// 新增字段：用于控制缓存的场景
-		cacheExist    bool                            // 是否在 Redis 中存在这个 Key
-		cacheGetError error                           // 获取缓存时是否模拟报错
-		cachedResult  map[string][]*model.Contributor // 如果缓存命中时，要返回的缓存结果
+		name          string
+		cacheGetError error                           // 批量获取缓存时是否模拟报错
+		cachedResult  map[string][]*model.Contributor // 缓存命中时返回的结果
+		expectResult  map[string][]*model.Contributor
+		expectError   string
 	}
 
 	// 准备完整的 mock 数据，覆盖所有4个 key
@@ -63,20 +59,18 @@ func TestGetContributorInfo(t *testing.T) {
 	testCases := []testCase{
 		{
 			name:         "SuccessCase",
-			cacheExist:   true, // 缓存存在
 			cachedResult: mockContributors,
 			expectResult: mockContributors,
 		},
 		{
 			name:          "CacheKeyNotExist",
-			mockFileError: assert.AnError,
+			cacheGetError: fmt.Errorf("service.GetContributorInfo: %s not exist", constants.ContributorFzuhelperAppKey),
 			expectError:   "not exist",
 		},
 		{
 			name:          "CacheGetError",
-			cacheExist:    true,
 			cacheGetError: assert.AnError,
-			expectError:   "failed to get contributor info for key",
+			expectError:   assert.AnError.Error(),
 		},
 	}
 
@@ -87,27 +81,13 @@ func TestGetContributorInfo(t *testing.T) {
 				CacheClient: new(cache.Cache),
 			}
 
-			// Mock IsKeyExist: 当 cacheExist=false 时，第一个 key 就会返回 false，导致直接报错
-			mockey.Mock((*cache.Cache).IsKeyExist).To(func(ctx context.Context, key string) bool {
-				return tc.cacheExist
-			}).Build()
-
-			// Mock GetContributorInfo
-			mockey.Mock((*commonCache.CacheCommon).GetContributorInfo).To(
-				func(ctx context.Context, key string) ([]*model.Contributor, error) {
-					// 如果测试用例要求缓存获取报错
+			// Mock GetContributorsInfo: 一次 MGET 批量返回全部 key 的数据
+			mockey.Mock((*commonCache.CacheCommon).GetContributorsInfo).To(
+				func(ctx context.Context, keys []string) (map[string][]*model.Contributor, error) {
 					if tc.cacheGetError != nil {
 						return nil, tc.cacheGetError
 					}
-					// 如果提供了缓存结果，返回对应 key 的数据
-					if tc.cachedResult != nil {
-						return tc.cachedResult[key], nil
-					}
-					// 否则返回 mockFileResult 中的数据（如果有）
-					if tc.mockFileResult != nil {
-						return tc.mockFileResult[key], tc.mockFileError
-					}
-					return nil, tc.mockFileError
+					return tc.cachedResult, nil
 				},
 			).Build()
 

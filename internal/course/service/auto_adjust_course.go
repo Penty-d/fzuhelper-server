@@ -17,6 +17,7 @@ limitations under the License.
 package service
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -24,7 +25,6 @@ import (
 	"github.com/west2-online/fzuhelper-server/kitex_gen/common"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/course"
 	rpcmodel "github.com/west2-online/fzuhelper-server/kitex_gen/model"
-	"github.com/west2-online/fzuhelper-server/pkg/base"
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/fzuhelper-server/pkg/taskqueue"
@@ -47,9 +47,10 @@ func (s *CourseService) GetAutoAdjustCourseList(term string) ([]*model.AutoAdjus
 		return nil, fmt.Errorf("service.GetAutoAdjustCourseList: Get from db failed: %w", err)
 	}
 
+	// 异步任务在 handler 返回后才执行，提前捕获与请求解耦的 ctx，避免复用已被框架回收的请求级上下文
+	taskCtx := context.WithoutCancel(s.ctx)
 	s.taskQueue.Add(fmt.Sprintf("cacheAutoAdjustCourseList:%s", term), taskqueue.QueueTask{Execute: func() error {
-		err := s.cache.Course.SetAutoAdjustCourseListCache(s.ctx, key, list)
-		return base.HandleJwchError(err)
+		return s.cache.Course.SetAutoAdjustCourseListCache(taskCtx, key, list)
 	}})
 
 	return list, nil
@@ -92,15 +93,16 @@ func (s *CourseService) UpdateAutoAdjustCourse(req *course.UpdateAdjustCourseReq
 		termsToRefresh = append(termsToRefresh, newTerm)
 	}
 
+	// 异步任务在 handler 返回后才执行，提前捕获与请求解耦的 ctx，避免复用已被框架回收的请求级上下文
+	taskCtx := context.WithoutCancel(s.ctx)
 	for _, term := range termsToRefresh {
 		s.taskQueue.Add(fmt.Sprintf("refreshAutoAdjustCourseCache:%s", term), taskqueue.QueueTask{Execute: func() error {
 			key := s.cache.Course.AutoAdjustCourseKey(term)
-			list, err := s.db.Course.GetAutoAdjustCourseListByTerm(s.ctx, term)
+			list, err := s.db.Course.GetAutoAdjustCourseListByTerm(taskCtx, term)
 			if err != nil {
-				return base.HandleJwchError(err)
+				return err
 			}
-			err = s.cache.Course.SetAutoAdjustCourseListCache(s.ctx, key, list)
-			return base.HandleJwchError(err)
+			return s.cache.Course.SetAutoAdjustCourseListCache(taskCtx, key, list)
 		}})
 	}
 

@@ -21,10 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloudwego/kitex/server"
-	"github.com/cloudwego/netpoll"
-	etcd "github.com/kitex-contrib/registry-etcd"
-
 	"github.com/west2-online/fzuhelper-server/config"
 	"github.com/west2-online/fzuhelper-server/internal/version"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/version/versionservice"
@@ -34,7 +30,6 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/taskqueue"
-	"github.com/west2-online/fzuhelper-server/pkg/tracing"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
 
@@ -56,45 +51,21 @@ func init() {
 }
 
 func main() {
-	// Open Telemetry provider
-	shutdown := tracing.NewOtelProvider(serviceName, config.Otel.Endpoint)
-
-	r, err := etcd.NewEtcdRegistry([]string{config.Etcd.Addr})
-	if err != nil {
-		logger.Fatalf("Version: etcd registry failed, error: %v", err)
-	}
-	listenAddr, err := utils.GetAvailablePort()
-	if err != nil {
-		logger.Fatalf("Version: get available port failed: %v", err)
-	}
-	addr, err := netpoll.ResolveTCPAddr("tcp", listenAddr)
-	if err != nil {
-		logger.Fatalf("Version: listen addr failed %v", err)
-	}
-
 	svr := versionservice.NewServer(
 		version.NewVersionService(clientSet),
-		baseserver.AssembleCommonServerConfig(serviceName, addr, r)...,
+		baseserver.MustAssembleServerOptions(serviceName, clientSet.Close)...,
 	)
-	server.RegisterShutdownHook(clientSet.Close)
-	server.RegisterShutdownHook(tracing.ProviderShutdown(shutdown,
-		"Version: otel provider shutdown failed: %v")) // otel provider
 
 	taskQueue.AddSchedule(constants.VersionVisitedTaskKey, taskqueue.ScheduleQueueTask{
 		Execute: syncVersionVisitDailyTask,
 		GetScheduleTime: func() time.Duration {
-			now := time.Now().In(constants.ChinaTZ)
-			nextRun := time.Date(now.Year(), now.Month(), now.Day(), constants.VersionVisitRefreshHour, constants.VersionVisitRefreshMinute, 0, 0, time.Local)
-			if !now.Before(nextRun) {
-				nextRun = nextRun.Add(constants.ONE_DAY)
-			}
-			// 动态处理到下一跳的刷新时间
-			return nextRun.Sub(now)
+			// 动态处理到下一跳的刷新时间（按中国时区每日刷新）
+			return utils.DurationUntilNextDaily(constants.VersionVisitRefreshHour, constants.VersionVisitRefreshMinute, constants.ChinaTZ)
 		},
 	})
 	taskQueue.Start()
 
-	if err = svr.Run(); err != nil {
+	if err := svr.Run(); err != nil {
 		logger.Fatalf("Version: server run failed: %v", err)
 	}
 }

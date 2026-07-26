@@ -22,10 +22,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloudwego/kitex/server"
-	"github.com/cloudwego/netpoll"
-	etcd "github.com/kitex-contrib/registry-etcd"
-
 	"github.com/west2-online/fzuhelper-server/config"
 	"github.com/west2-online/fzuhelper-server/internal/academic"
 	"github.com/west2-online/fzuhelper-server/internal/academic/service"
@@ -35,7 +31,6 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/taskqueue"
-	"github.com/west2-online/fzuhelper-server/pkg/tracing"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
 
@@ -64,45 +59,25 @@ func main() {
 		return
 	}
 
-	// Open Telemetry provider
-	shutdown := tracing.NewOtelProvider(serviceName, config.Otel.Endpoint)
-
-	r, err := etcd.NewEtcdRegistry([]string{config.Etcd.Addr})
-	if err != nil {
-		logger.Fatalf("Academic: etcd registry failed, error: %v", err)
-	}
-	listenAddr, err := utils.GetAvailablePort()
-	if err != nil {
-		logger.Fatalf("Academic: get available port failed: %v", err)
-	}
-	addr, err := netpoll.ResolveTCPAddr("tcp", listenAddr)
-	if err != nil {
-		logger.Fatalf("Academic: listen addr failed %v", err)
-	}
-
 	svr := academicservice.NewServer(
 		academic.NewAcademicService(clientSet, taskQueue),
-		baseserver.AssembleCommonServerConfig(serviceName, addr, r)...,
+		baseserver.MustAssembleServerOptions(serviceName, clientSet.Close)...,
 	)
-	server.RegisterShutdownHook(clientSet.Close)
-	server.RegisterShutdownHook(tracing.ProviderShutdown(shutdown,
-		"Academic: otel provider shutdown failed: %v")) // otel provider
 
 	taskQueue.AddSchedule(constants.CourseTeacherScoresTaskKey, taskqueue.ScheduleQueueTask{
 		Execute: updateCourseTeacherScoresTask,
 		GetScheduleTime: func() time.Duration {
 			// 每天凌晨4点
-			now := time.Now()
-			next := time.Date(now.Year(), now.Month(), now.Day(), 4, 0, 0, 0, now.Location())
-			if !next.After(now) {
-				next = next.Add(constants.CourseTeacherScoresInterval)
-			}
-			return next.Sub(now)
+			return utils.DurationUntilNextDaily(
+				constants.CourseTeacherScoresRefreshHour,
+				constants.CourseTeacherScoresRefreshMinute,
+				constants.ChinaTZ,
+			)
 		},
 	})
 
 	taskQueue.Start()
-	if err = svr.Run(); err != nil {
+	if err := svr.Run(); err != nil {
 		logger.Fatalf("Academic: server run failed: %v", err)
 	}
 }

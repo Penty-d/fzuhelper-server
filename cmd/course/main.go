@@ -20,10 +20,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloudwego/kitex/server"
-	"github.com/cloudwego/netpoll"
-	etcd "github.com/kitex-contrib/registry-etcd"
-
 	"github.com/west2-online/fzuhelper-server/config"
 	"github.com/west2-online/fzuhelper-server/internal/course"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/course/courseservice"
@@ -34,8 +30,6 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/taskqueue"
-	"github.com/west2-online/fzuhelper-server/pkg/tracing"
-	"github.com/west2-online/fzuhelper-server/pkg/utils"
 	"github.com/west2-online/jwch"
 )
 
@@ -54,32 +48,10 @@ func init() {
 }
 
 func main() {
-	// Open Telemetry provider
-	shutdown := tracing.NewOtelProvider(serviceName, config.Otel.Endpoint)
-
-	r, err := etcd.NewEtcdRegistry([]string{config.Etcd.Addr})
-	if err != nil {
-		// 如果无法解析 etcd 的地址，则无法连接到其他的微服务，说明整个服务无法运行，直接 panic
-		// 因为 API 只做数据包装返回和转发请求
-		logger.Fatalf("Course: etcd registry failed, error: %v", err)
-	}
-	listenAddr, err := utils.GetAvailablePort()
-	if err != nil {
-		logger.Fatalf("Course: get available port failed: %v", err)
-	}
-	addr, err := netpoll.ResolveTCPAddr("tcp", listenAddr)
-	if err != nil {
-		logger.Fatalf("Course: resolve tcp addr failed, err: %v", err)
-	}
-
 	svr := courseservice.NewServer(
 		course.NewCourseService(clientSet, taskQueue),
-		baseserver.AssembleCommonServerConfig(serviceName, addr, r)...,
+		baseserver.MustAssembleServerOptions(serviceName, clientSet.Close)...,
 	)
-
-	server.RegisterShutdownHook(clientSet.Close)
-	server.RegisterShutdownHook(tracing.ProviderShutdown(shutdown,
-		"Course: otel provider shutdown failed: %v")) // otel provider
 
 	taskQueue.AddSchedule(constants.LocateDateTaskKey, taskqueue.ScheduleQueueTask{
 		Execute: func(ctx context.Context) error {
@@ -104,7 +76,7 @@ func main() {
 		},
 	})
 	taskQueue.Start()
-	if err = svr.Run(); err != nil {
+	if err := svr.Run(); err != nil {
 		logger.Fatalf("Course: run server failed, err: %v", err)
 	}
 }

@@ -33,6 +33,9 @@ const (
 	VersionVisitRefreshHour     = 0 // 访问统计刷盘时间
 	VersionVisitRefreshMinute   = 10
 	VersionVisitDefaultPageSize = 10 // 读取的条目
+
+	CourseTeacherScoresRefreshHour   = 4 // 教师评价分数更新时间
+	CourseTeacherScoresRefreshMinute = 0
 )
 
 // CampusArray 校区数组

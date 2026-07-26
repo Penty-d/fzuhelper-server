@@ -17,10 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"github.com/cloudwego/kitex/server"
-	"github.com/cloudwego/netpoll"
-	etcd "github.com/kitex-contrib/registry-etcd"
-
 	"github.com/west2-online/fzuhelper-server/config"
 	"github.com/west2-online/fzuhelper-server/internal/launch_screen"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/launch_screen/launchscreenservice"
@@ -29,8 +25,6 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/oss"
-	"github.com/west2-online/fzuhelper-server/pkg/tracing"
-	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
 
 var (
@@ -50,32 +44,13 @@ func init() {
 }
 
 func main() {
-	// Open Telemetry provider
-	shutdown := tracing.NewOtelProvider(serviceName, config.Otel.Endpoint)
-
-	r, err := etcd.NewEtcdRegistry([]string{config.Etcd.Addr})
-	if err != nil {
-		logger.Fatalf("launchScreen: etcd registry failed, error: %v", err)
-	}
-	listenAddr, err := utils.GetAvailablePort()
-	if err != nil {
-		logger.Fatalf("launchScreen: get available port failed: %v", err)
-	}
-	serviceAddr, err := netpoll.ResolveTCPAddr("tcp", listenAddr)
-	if err != nil {
-		logger.Fatalf("launchScreen: listen addr failed %v", err)
-	}
-
+	// LaunchScreenService 需要使用流式传输，与 Mux 传输冲突，故使用不带 Mux 的配置
 	svr := launchscreenservice.NewServer(
 		launch_screen.NewLaunchScreenService(clientSet),
-		baseserver.AssembleCommonServerConfig(serviceName, serviceAddr, r)...,
+		baseserver.MustAssembleServerOptionsWithoutMux(serviceName, clientSet.Close)...,
 	)
-	server.RegisterShutdownHook(clientSet.Close)
-	server.RegisterShutdownHook(tracing.ProviderShutdown(shutdown,
-		"launchScreen: otel provider shutdown failed: %v")) // otel provider
 
-	err = svr.Run()
-	if err != nil {
+	if err := svr.Run(); err != nil {
 		logger.Fatalf("launchScreen: server run failed: %v", err)
 	}
 }

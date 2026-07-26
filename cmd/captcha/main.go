@@ -17,10 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"github.com/cloudwego/kitex/server"
-	"github.com/cloudwego/netpoll"
-	etcd "github.com/kitex-contrib/registry-etcd"
-
 	"github.com/west2-online/fzuhelper-server/config"
 	"github.com/west2-online/fzuhelper-server/internal/captcha"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/captcha/captchaservice"
@@ -29,8 +25,6 @@ import (
 	captchapkg "github.com/west2-online/fzuhelper-server/pkg/captcha"
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
-	"github.com/west2-online/fzuhelper-server/pkg/tracing"
-	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
 
 var (
@@ -48,31 +42,12 @@ func init() {
 }
 
 func main() {
-	// Open Telemetry provider
-	shutdown := tracing.NewOtelProvider(serviceName, config.Otel.Endpoint)
-
-	r, err := etcd.NewEtcdRegistry([]string{config.Etcd.Addr})
-	if err != nil {
-		logger.Fatalf("Captcha: new etcd registry failed, err: %v", err)
-	}
-	listenAddr, err := utils.GetAvailablePort()
-	if err != nil {
-		logger.Fatalf("Captcha: get available port failed, err: %v", err)
-	}
-	addr, err := netpoll.ResolveTCPAddr("tcp", listenAddr)
-	if err != nil {
-		logger.Fatalf("Captcha: resolve tcp addr failed, err: %v", err)
-	}
-
 	svr := captchaservice.NewServer(
 		captcha.NewCaptchaService(clientSet),
-		baseserver.AssembleCommonServerConfig(serviceName, addr, r)...,
+		baseserver.MustAssembleServerOptions(serviceName, clientSet.Close)...,
 	)
-	server.RegisterShutdownHook(clientSet.Close)
-	server.RegisterShutdownHook(tracing.ProviderShutdown(shutdown,
-		"Captcha: otel provider shutdown failed: %v")) // otel provider
 
-	if err = svr.Run(); err != nil {
+	if err := svr.Run(); err != nil {
 		logger.Fatalf("Captcha: server run failed, err: %v", err)
 	}
 }

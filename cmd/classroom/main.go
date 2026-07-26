@@ -22,9 +22,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cloudwego/kitex/server"
-	"github.com/cloudwego/netpoll"
-	etcd "github.com/kitex-contrib/registry-etcd"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/west2-online/fzuhelper-server/config"
@@ -35,7 +32,6 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/taskqueue"
-	"github.com/west2-online/fzuhelper-server/pkg/tracing"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 	"github.com/west2-online/jwch"
 )
@@ -55,30 +51,10 @@ func init() {
 }
 
 func main() {
-	// Open Telemetry provider
-	shutdown := tracing.NewOtelProvider(serviceName, config.Otel.Endpoint)
-
-	r, err := etcd.NewEtcdRegistry([]string{config.Etcd.Addr})
-	if err != nil {
-		logger.Fatalf("Classroom: etcd registry failed, error: %v", err)
-	}
-	listenAddr, err := utils.GetAvailablePort()
-	if err != nil {
-		logger.Fatalf("Classroom: get available port failed: %v", err)
-	}
-	logger.Infof("Classroom: listen addr: %v", listenAddr)
-	addr, err := netpoll.ResolveTCPAddr("tcp", listenAddr)
-	if err != nil {
-		logger.Fatalf("Classroom: listen addr failed %v", err)
-	}
-
 	svr := classroomservice.NewServer(
 		classroom.NewClassroomService(clientSet),
-		baseserver.AssembleCommonServerConfig(serviceName, addr, r)...,
+		baseserver.MustAssembleServerOptions(serviceName, clientSet.Close)...,
 	)
-	server.RegisterShutdownHook(clientSet.Close)
-	server.RegisterShutdownHook(tracing.ProviderShutdown(shutdown,
-		"Classroom: otel provider shutdown failed: %v")) // otel provider
 
 	taskQueue.AddSchedule("update", taskqueue.ScheduleQueueTask{
 		Execute: func(ctx context.Context) error {
@@ -99,7 +75,7 @@ func main() {
 
 	taskQueue.Start()
 
-	if err = svr.Run(); err != nil {
+	if err := svr.Run(); err != nil {
 		logger.Fatalf("Classroom: server run failed: %v", err)
 	}
 }

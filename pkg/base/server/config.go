@@ -32,12 +32,22 @@ import (
 
 // config.go RPC 服务器配置，配置应当只在 cmd 包中调用
 
-// AssembleCommonServerConfig 组装通用 RPC 服务器配置
+// AssembleCommonServerConfig 组装通用 RPC 服务器配置（默认启用 Mux 传输）
 func AssembleCommonServerConfig(serviceName string, addr net.Addr, r registry.Registry) []server.Option {
+	return assembleServerConfig(serviceName, addr, r, true)
+}
+
+// AssembleCommonServerConfigWithoutMux 组装不启用 Mux 传输的通用 RPC 服务器配置；
+// 使用 Mux 传输会和流式传输冲突，需要流式传输的服务应使用该函数
+func AssembleCommonServerConfigWithoutMux(serviceName string, addr net.Addr, r registry.Registry) []server.Option {
+	return assembleServerConfig(serviceName, addr, r, false)
+}
+
+// assembleServerConfig 组装通用 RPC 服务器配置，withMux 控制是否启用 Mux 传输
+func assembleServerConfig(serviceName string, addr net.Addr, r registry.Registry, withMux bool) []server.Option {
 	opts := commonServerConfig()
 	opts = append(opts, server.WithServerBasicInfo(&rpcinfo.EndpointBasicInfo{ServiceName: serviceName}))
-	// 使用 Mux 传输会和流式传输冲突，LaunchScreenService 需要使用流式传输，所以不使用 Mux 传输
-	if serviceName != constants.LaunchScreenServiceName {
+	if withMux {
 		opts = append(opts, server.WithMuxTransport())
 	}
 	opts = append(opts,

@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/h2non/filetype"
@@ -40,6 +41,9 @@ const (
 	HoursInADay            = 24
 	DaysInAWeek            = 7
 	DefaultFilePermissions = 0o666 // 默认文件权限
+
+	cnUTCOffsetHours = 8 // 东八区相对 UTC 的偏移小时数
+	secondsInAnHour  = 60 * 60
 )
 
 // TimeParse 会将文本日期解析为标准时间对象
@@ -47,10 +51,20 @@ func TimeParse(date string) (time.Time, error) {
 	return time.Parse("2006-01-02", date)
 }
 
+// cnLocation 缓存时区解析结果，避免每次调用都重新读取解析 zoneinfo 文件；
+// 缺失 tzdata 的精简镜像中回退到固定 +8 时区，避免返回 nil 导致后续 time.In(nil) panic
+var cnLocation = sync.OnceValue(func() *time.Location {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		logger.Errorf("utils.LoadCNLocation: load tzdata failed, fallback to fixed +8: %v", err)
+		return time.FixedZone("CST", cnUTCOffsetHours*secondsInAnHour)
+	}
+	return loc
+})
+
 // LoadCNLocation 载入cn时间
 func LoadCNLocation() *time.Location {
-	Loc, _ := time.LoadLocation("Asia/Shanghai")
-	return Loc
+	return cnLocation()
 }
 
 // GetMysqlDSN 会拼接 mysql 的 DSN

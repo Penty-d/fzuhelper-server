@@ -45,19 +45,22 @@ func NewUpYun() {
 
 // GetDir 获取目录下的文件和文件夹
 func GetDir(path string) (*model.UpYunFileDir, error) {
-	var err error
 	fileDir := &model.UpYunFileDir{
 		BasePath: &path,
 		Folders:  []string{},
 		Files:    []string{},
 	}
 	objsChan := make(chan *upyun.FileInfo, DefaultObjsChannelSize)
+	// 通过带缓冲的 error channel 传递 List 的结果，保证与主 goroutine 的读取存在 happens-before 关系，
+	// 避免 List 中途失败时残缺目录被误判为成功返回
+	errCh := make(chan error, 1)
 	go func() {
-		err = UpYun.List(&upyun.GetObjectsConfig{
+		errCh <- UpYun.List(&upyun.GetObjectsConfig{
 			Path:        path,
 			ObjectsChan: objsChan,
 		})
 	}()
+	// SDK 内部通过 defer close(ObjectsChan) 保证 range 退出
 	for obj := range objsChan {
 		if obj.IsDir {
 			if !obj.IsEmptyDir && !strings.HasPrefix(obj.Name, "__") { // 过滤空和临时文件夹
@@ -67,7 +70,10 @@ func GetDir(path string) (*model.UpYunFileDir, error) {
 			fileDir.Files = append(fileDir.Files, obj.Name)
 		}
 	}
-	return fileDir, err
+	if err := <-errCh; err != nil {
+		return nil, err
+	}
+	return fileDir, nil
 }
 
 // GetDownloadUrl 基于路径获取对应的下载链接

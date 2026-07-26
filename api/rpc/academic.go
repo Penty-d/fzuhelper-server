@@ -21,92 +21,64 @@ import (
 
 	"github.com/west2-online/fzuhelper-server/kitex_gen/academic"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
-	"github.com/west2-online/fzuhelper-server/pkg/base/client"
-	"github.com/west2-online/fzuhelper-server/pkg/errno"
-	"github.com/west2-online/fzuhelper-server/pkg/logger"
-	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
 
-func InitAcademicRPC() {
-	c, err := client.InitAcademicRPC()
-	if err != nil {
-		logger.Fatalf("api.rpc.academic InitAcademicRPC failed, err  %v", err)
-	}
-	academicClient = *c
-}
-
 func GetScoresRPC(ctx context.Context, req *academic.GetScoresRequest) (scores []*model.Score, err error) {
-	resp, err := academicClient.GetScores(ctx, req)
+	resp, err := call(ctx, "GetScoresRPC", func() (*academic.GetScoresResponse, error) {
+		return academicClient.GetScores(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetScoresRPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
 	}
 	return resp.Scores, nil
 }
 
 func GetGPARPC(ctx context.Context, req *academic.GetGPARequest) (gpa *model.GPABean, err error) {
-	resp, err := academicClient.GetGPA(ctx, req)
+	resp, err := call(ctx, "GetGPARPC", func() (*academic.GetGPAResponse, error) {
+		return academicClient.GetGPA(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetGPARPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
 	}
 	return resp.Gpa, nil
 }
 
 func GetCreditRPC(ctx context.Context, req *academic.GetCreditRequest) (credit []*model.Credit, err error) {
-	resp, err := academicClient.GetCredit(ctx, req)
+	resp, err := call(ctx, "GetCreditRPC", func() (*academic.GetCreditResponse, error) {
+		return academicClient.GetCredit(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetCreditRPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
 	}
-
 	return resp.Major, nil
 }
 
 func GetUnifiedExamRPC(ctx context.Context, req *academic.GetUnifiedExamRequest) (unifiedExam []*model.UnifiedExam, err error) {
-	resp, err := academicClient.GetUnifiedExam(ctx, req)
+	resp, err := call(ctx, "GetUnifiedExamRPC", func() (*academic.GetUnifiedExamResponse, error) {
+		return academicClient.GetUnifiedExam(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetUnifiedExamRPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
 	}
-
 	return resp.UnifiedExam, nil
 }
 
 func GetCultivatePlanRPC(ctx context.Context, req *academic.GetPlanRequest) (string, error) {
-	resp, err := academicClient.GetPlan(ctx, req)
+	resp, err := call(ctx, "GetCultivatePlanRPC", func() (*academic.GetPlanResponse, error) {
+		return academicClient.GetPlan(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetCultivatePlanRPC: RPC called failed: %v", err.Error())
-		return "", errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return "", err
 	}
-
 	return resp.Url, nil
 }
 
 func GetCreditV2RPC(ctx context.Context, req *academic.GetCreditV2Request) (*model.CreditResponse, error) {
-	resp, err := academicClient.GetCreditV2(ctx, req)
+	resp, err := call(ctx, "GetCreditV2RPC", func() (*academic.GetCreditV2Response, error) {
+		return academicClient.GetCreditV2(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetCreditV2RPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
 	}
-
 	return &resp.Credit, nil
 }

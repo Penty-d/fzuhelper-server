@@ -19,31 +19,28 @@ package rpc
 import (
 	"context"
 
-	"github.com/west2-online/fzuhelper-server/kitex_gen/classroom"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
 
-func GetEmptyRoomRPC(ctx context.Context, req *classroom.EmptyRoomRequest) (emptyRooms []*model.Classroom, err error) {
-	resp, err := classroomClient.GetEmptyRoom(ctx, req)
-	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetEmptyRoomRPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if !utils.IsSuccess(resp.Base) {
-		return nil, errno.BizError.WithMessage(resp.Base.Msg)
-	}
-	return resp.Rooms, nil
+// baseResper 约束携带 BaseResp 的 kitex 响应类型
+type baseResper interface {
+	GetBase() *model.BaseResp
 }
 
-func GetExamRoomInfoRPC(ctx context.Context, req *classroom.ExamRoomInfoRequest) (roomInfo []*model.ExamRoomInfo, err error) {
-	resp, err := call(ctx, "GetExamRoomInfoRPC", func() (*classroom.ExamRoomInfoResponse, error) {
-		return classroomClient.GetExamRoomInfo(ctx, req)
-	})
+// call 统一处理 RPC 包装函数的通用骨架：调用 -> 失败记日志并返回 InternalServiceError -> HandleBaseRespWithCookie
+// 仅供错误处理逻辑与该骨架逐字一致的包装函数使用，其余定制错误码/消息的包装函数保持各自实现
+func call[T baseResper](ctx context.Context, name string, invoke func() (T, error)) (T, error) {
+	var zero T
+	resp, err := invoke()
 	if err != nil {
-		return nil, err
+		logger.WithCtx(ctx).Errorf("%s: RPC called failed: %v", name, err.Error())
+		return zero, errno.InternalServiceError.WithMessage(err.Error())
 	}
-	return resp.Rooms, nil
+	if err = utils.HandleBaseRespWithCookie(resp.GetBase()); err != nil {
+		return zero, err
+	}
+	return resp, nil
 }

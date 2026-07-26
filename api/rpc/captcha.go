@@ -20,19 +20,10 @@ import (
 	"context"
 
 	"github.com/west2-online/fzuhelper-server/kitex_gen/captcha"
-	"github.com/west2-online/fzuhelper-server/pkg/base/client"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
-
-func InitCaptchaRPC() {
-	c, err := client.InitCaptchaRPC()
-	if err != nil {
-		logger.Fatalf("api.rpc.captcha InitCaptchaRPC failed, err is %v", err)
-	}
-	captchaClient = *c
-}
 
 func ValidateCodeRPC(ctx context.Context, req *captcha.ValidateCodeRequest) (string, error) {
 	resp, err := captchaClient.ValidateCode(ctx, req)

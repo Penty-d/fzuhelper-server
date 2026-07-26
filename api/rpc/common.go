@@ -21,19 +21,9 @@ import (
 
 	"github.com/west2-online/fzuhelper-server/kitex_gen/common"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
-	"github.com/west2-online/fzuhelper-server/pkg/base/client"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
-	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
-
-func InitCommonRPC() {
-	client, err := client.InitCommonRPC()
-	if err != nil {
-		logger.Fatalf("api.rpc.common InitCommonRPC failed, err  %v", err)
-	}
-	commonClient = *client
-}
 
 func GetCSSRPC(ctx context.Context, req *common.GetCSSRequest) (*[]byte, error) {
 	resp, err := commonClient.GetCSS(ctx, req)
@@ -72,99 +62,80 @@ func GetUserAgreementRPC(ctx context.Context, req *common.GetUserAgreementReques
 }
 
 func GetTermsListRPC(ctx context.Context, req *common.TermListRequest) (*model.TermList, error) {
-	resp, err := commonClient.GetTermsList(ctx, req)
+	resp, err := call(ctx, "GetTermsListRPC", func() (*common.TermListResponse, error) {
+		return commonClient.GetTermsList(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetTermsListRPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
 	}
-
 	return resp.TermLists, nil
 }
 
 func GetTermRPC(ctx context.Context, req *common.TermRequest) (*model.TermInfo, error) {
-	resp, err := commonClient.GetTerm(ctx, req)
+	resp, err := call(ctx, "GetTermRPC", func() (*common.TermResponse, error) {
+		return commonClient.GetTerm(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetTermRPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
 	}
-
 	return resp.TermInfo, nil
 }
 
 func GetNoticesRPC(ctx context.Context, req *common.NoticeRequest) ([]*model.NoticeInfo, int64, error) {
-	resp, err := commonClient.GetNotices(ctx, req)
+	resp, err := call(ctx, "GetNoticesRPC", func() (*common.NoticeResponse, error) {
+		return commonClient.GetNotices(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetNoticesRPC: RPC called failed: %v", err.Error())
-		return nil, 0, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, 0, err
 	}
 	return resp.Notices, resp.Total, nil
 }
 
 func GetContributorRPC(ctx context.Context, req *common.GetContributorInfoRequest) (*common.GetContributorInfoResponse, error) {
-	resp, err := commonClient.GetContributorInfo(ctx, req)
+	resp, err := call(ctx, "GetContributorRPC", func() (*common.GetContributorInfoResponse, error) {
+		return commonClient.GetContributorInfo(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetContributorRPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
 func GetToolboxConfigRPC(ctx context.Context, req *common.GetToolboxConfigRequest) ([]*model.ToolboxConfig, error) {
-	resp, err := commonClient.GetToolboxConfig(ctx, req)
+	resp, err := call(ctx, "GetToolboxConfigRPC", func() (*common.GetToolboxConfigResponse, error) {
+		return commonClient.GetToolboxConfig(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetToolboxConfigRPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
 	}
 	return resp.Config, nil
 }
 
 func GetToolboxConfigListRPC(ctx context.Context, req *common.GetToolboxConfigListRequest) ([]*model.ToolboxConfig, int64, error) {
-	resp, err := commonClient.GetToolboxConfigList(ctx, req)
+	resp, err := call(ctx, "GetToolboxConfigListRPC", func() (*common.GetToolboxConfigListResponse, error) {
+		return commonClient.GetToolboxConfigList(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("GetToolboxConfigListRPC: RPC called failed: %v", err.Error())
-		return nil, 0, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, 0, err
 	}
 	return resp.Config, resp.Total, nil
 }
 
 func PutToolboxConfigRPC(ctx context.Context, req *common.PutToolboxConfigRequest) (*common.PutToolboxConfigResponse, error) {
-	resp, err := commonClient.PutToolboxConfig(ctx, req)
+	resp, err := call(ctx, "PutToolboxConfigRPC", func() (*common.PutToolboxConfigResponse, error) {
+		return commonClient.PutToolboxConfig(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("PutToolboxConfigRPC: RPC called failed: %v", err.Error())
-		return nil, errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
 func TracePingRPC(ctx context.Context, req *common.TracePingRequest) (string, error) {
-	resp, err := commonClient.TracePing(ctx, req)
+	resp, err := call(ctx, "TracePingRPC", func() (*common.TracePingResponse, error) {
+		return commonClient.TracePing(ctx, req)
+	})
 	if err != nil {
-		logger.WithCtx(ctx).Errorf("TracePingRPC: RPC called failed: %v", err.Error())
-		return "", errno.InternalServiceError.WithMessage(err.Error())
-	}
-	if err = utils.HandleBaseRespWithCookie(resp.Base); err != nil {
 		return "", err
 	}
 	return resp.Message, nil

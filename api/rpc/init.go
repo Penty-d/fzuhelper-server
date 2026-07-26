@@ -27,6 +27,9 @@ import (
 	"github.com/west2-online/fzuhelper-server/kitex_gen/paper/paperservice"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/user/userservice"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/version/versionservice"
+	"github.com/west2-online/fzuhelper-server/pkg/base/client"
+	"github.com/west2-online/fzuhelper-server/pkg/constants"
+	"github.com/west2-online/fzuhelper-server/pkg/logger"
 )
 
 var (
@@ -43,17 +46,26 @@ var (
 	captchaClient            captchaservice.Client
 )
 
+// mustInitClient 初始化单个 RPC client，失败时直接 Fatalf 终止进程
+func mustInitClient[T any](name string, initFn func() (*T, error)) T {
+	c, err := initFn()
+	if err != nil {
+		logger.Fatalf("api.rpc: init %s client failed, err: %v", name, err)
+	}
+	return *c
+}
+
 // Init 初始化所有 RPC 服务 TODO: 这个连接池管理不是很好，有待优化
 func Init() {
-	InitClassroomRPC()
-	InitUserRPC()
-	InitCourseRPC()
-	InitLaunchScreenRPC()
-	InitLaunchScreenStreamRPC()
-	InitPaperRPC()
-	InitAcademicRPC()
-	InitVersionRPC()
-	InitCommonRPC()
-	InitOARPC()
-	InitCaptchaRPC()
+	classroomClient = mustInitClient(constants.ClassroomServiceName, client.InitClassroomRPC)
+	userClient = mustInitClient(constants.UserServiceName, client.InitUserRPC)
+	courseClient = mustInitClient(constants.CourseServiceName, client.InitCourseRPC)
+	launchScreenClient = mustInitClient(constants.LaunchScreenServiceName, client.InitLaunchScreenRPC)
+	launchScreenStreamClient = mustInitClient(constants.LaunchScreenServiceName+" stream", client.InitLaunchScreenStreamRPC)
+	paperClient = mustInitClient(constants.PaperServiceName, client.InitPaperRPC)
+	academicClient = mustInitClient(constants.AcademicServiceName, client.InitAcademicRPC)
+	versionClient = mustInitClient(constants.VersionServiceName, client.InitVersionRPC)
+	commonClient = mustInitClient(constants.CommonServiceName, client.InitCommonRPC)
+	oaClient = mustInitClient(constants.OAServiceName, client.InitOARPC)
+	captchaClient = mustInitClient(constants.CaptchaServiceName, client.InitCaptchaRPC)
 }

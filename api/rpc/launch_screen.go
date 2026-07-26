@@ -21,27 +21,10 @@ import (
 
 	"github.com/west2-online/fzuhelper-server/kitex_gen/launch_screen"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
-	"github.com/west2-online/fzuhelper-server/pkg/base/client"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
-
-func InitLaunchScreenRPC() {
-	c, err := client.InitLaunchScreenRPC()
-	if err != nil {
-		logger.Fatalf("api.rpc.launch_screen InitLaunchScreenRPC failed, err  %v", err)
-	}
-	launchScreenClient = *c
-}
-
-func InitLaunchScreenStreamRPC() {
-	c, err := client.InitLaunchScreenStreamRPC()
-	if err != nil {
-		logger.Fatalf("api.rpc.launch_screen InitLaunchScreenStreamRPC failed, err  %v", err)
-	}
-	launchScreenStreamClient = *c
-}
 
 func CreateImageRPC(ctx context.Context, req *launch_screen.CreateImageRequest, file [][]byte) (image *model.Picture, err error) {
 	stream, err := launchScreenStreamClient.CreateImage(ctx)

@@ -21,19 +21,10 @@ import (
 
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/paper"
-	"github.com/west2-online/fzuhelper-server/pkg/base/client"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
-
-func InitPaperRPC() {
-	c, err := client.InitPaperRPC()
-	if err != nil {
-		logger.Fatalf("api.rpc.Paper InitPaperRPC failed, err  %v", err)
-	}
-	paperClient = *c
-}
 
 func GetDownloadUrlRPC(ctx context.Context, req *paper.GetDownloadUrlRequest) (url string, err error) {
 	resp, err := paperClient.GetDownloadUrl(ctx, req)

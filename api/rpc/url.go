@@ -20,19 +20,10 @@ import (
 	"context"
 
 	"github.com/west2-online/fzuhelper-server/kitex_gen/version"
-	"github.com/west2-online/fzuhelper-server/pkg/base/client"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
-
-func InitVersionRPC() {
-	client, err := client.InitVersionRPC()
-	if err != nil {
-		logger.Fatalf("api.rpc.version InitVersionRPC failed, err  %v", err)
-	}
-	versionClient = *client
-}
 
 func LoginRPC(ctx context.Context, req *version.LoginRequest) (err error) {
 	resp, err := versionClient.Login(ctx, req)

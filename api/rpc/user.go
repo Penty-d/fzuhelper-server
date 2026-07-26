@@ -21,19 +21,10 @@ import (
 
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/user"
-	"github.com/west2-online/fzuhelper-server/pkg/base/client"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
-
-func InitUserRPC() {
-	c, err := client.InitUserRPC()
-	if err != nil {
-		logger.Fatalf("api.rpc.user InitUserRPC failed, err is %v", err)
-	}
-	userClient = *c
-}
 
 func GetLoginDataRPC(ctx context.Context, req *user.GetLoginDataRequest) (string, string, error) {
 	resp, err := userClient.GetLoginData(ctx, req)

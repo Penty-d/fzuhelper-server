@@ -20,24 +20,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/west2-online/fzuhelper-server/config"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/oa"
-	"github.com/west2-online/fzuhelper-server/pkg/base/client"
-	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/errno"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
-
-func InitOARPC() {
-	c, err := client.InitOARPC()
-	if err != nil {
-		logger.Fatalf("api.rpc.oa InitOARPC failed, err is %v", err)
-	}
-	logger.Infof("InitOARPC: etcd=%s service=%s", config.Etcd.Addr, constants.OAServiceName)
-	oaClient = *c
-}
 
 func CreateFeedbackRPC(ctx context.Context, req *oa.CreateFeedbackRequest) (int64, error) {
 	resp, err := oaClient.CreateFeedback(ctx, req)

@@ -16,11 +16,15 @@ limitations under the License.
 
 package service
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/west2-online/fzuhelper-server/pkg/constants"
+)
 
 func (s *UserService) VerifyUserFriend(stuId string, friendId string) (bool, error) {
 	var err error
-	userFriendKey := fmt.Sprintf("user_friends:%v", stuId)
+	userFriendKey := fmt.Sprintf(constants.UserFriendsKeyFormat, stuId)
 	exist := s.cache.IsKeyExist(s.ctx, userFriendKey)
 	ok := false
 	// 验证好友

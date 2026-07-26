@@ -26,7 +26,7 @@ import (
 )
 
 func (s *UserService) GetInvitationCode(stuId string, isRefresh bool) (code string, expireAt int64, err error) {
-	codeKey := fmt.Sprintf("codes:%s", stuId)
+	codeKey := fmt.Sprintf(constants.InvitationCodeKeyFormat, stuId)
 	exist := s.cache.IsKeyExist(s.ctx, codeKey)
 	// 存在返回cache内已经生成的邀请码
 	if exist {
@@ -41,8 +41,8 @@ func (s *UserService) GetInvitationCode(stuId string, isRefresh bool) (code stri
 		}
 	}
 	newCode := utils.GenerateRandomCode(constants.CommonInvitationCodeLength)
-	mapKey := fmt.Sprintf("code_mapping:%s", code)
-	newMapKey := fmt.Sprintf("code_mapping:%s", newCode)
+	mapKey := fmt.Sprintf(constants.CodeMappingKeyFormat, code)
+	newMapKey := fmt.Sprintf(constants.CodeMappingKeyFormat, newCode)
 	s.taskQueue.Add(fmt.Sprintf("updateInvitationCode:%s", stuId), taskqueue.QueueTask{Execute: func() error {
 		if err := s.cache.User.RemoveCodeStuIdMappingCache(s.ctx, mapKey); err != nil {
 			return err

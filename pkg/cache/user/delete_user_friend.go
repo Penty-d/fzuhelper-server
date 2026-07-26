@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/west2-online/fzuhelper-server/pkg/base/environment"
+	"github.com/west2-online/fzuhelper-server/pkg/constants"
 )
 
 func (c *CacheUser) DeleteUserFriendCache(ctx context.Context, stuId, friendId string) error {
@@ -28,8 +29,8 @@ func (c *CacheUser) DeleteUserFriendCache(ctx context.Context, stuId, friendId s
 		return nil
 	}
 	pipe := c.client.Pipeline()
-	userFriendKey := fmt.Sprintf("user_friends:%v", stuId)
-	userFriendKey_ := fmt.Sprintf("user_friends:%v", friendId)
+	userFriendKey := fmt.Sprintf(constants.UserFriendsKeyFormat, stuId)
+	userFriendKey_ := fmt.Sprintf(constants.UserFriendsKeyFormat, friendId)
 	pipe.HDel(ctx, userFriendKey, friendId)
 	pipe.HDel(ctx, userFriendKey_, stuId)
 	_, err := pipe.Exec(ctx)

@@ -19,6 +19,7 @@ package service
 import (
 	"fmt"
 
+	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 )
 
@@ -28,7 +29,7 @@ func (s *UserService) ReorderFriendList(stuId string, friendIds []string) error 
 	}
 
 	// 删除好友列表缓存
-	userFriendKey := fmt.Sprintf("user_friends:%v", stuId)
+	userFriendKey := fmt.Sprintf(constants.UserFriendsKeyFormat, stuId)
 	if s.cache.IsKeyExist(s.ctx, userFriendKey) {
 		if err := s.cache.User.InvalidateFriendListCache(s.ctx, stuId); err != nil {
 			logger.WithCtx(s.ctx).Errorf("service.ReorderFriendList: delete cache failed: %v", err)

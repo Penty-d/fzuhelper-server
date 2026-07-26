@@ -72,7 +72,7 @@ func (c *CacheUser) InvalidateFriendListCache(ctx context.Context, stuId string)
 	if environment.IsTestEnvironment() {
 		return nil
 	}
-	userFriendKey := fmt.Sprintf("user_friends:%v", stuId)
+	userFriendKey := fmt.Sprintf(constants.UserFriendsKeyFormat, stuId)
 	if err := c.client.Del(ctx, userFriendKey).Err(); err != nil {
 		return fmt.Errorf("dal.InvalidateFriendListCache: Delete cache failed: %w", err)
 	}
@@ -84,7 +84,7 @@ func (c *CacheUser) SetUserFriendListCache(ctx context.Context, stuId string, fr
 		return nil
 	}
 	pipe := c.client.Pipeline()
-	userFriendKey := fmt.Sprintf("user_friends:%v", stuId)
+	userFriendKey := fmt.Sprintf(constants.UserFriendsKeyFormat, stuId)
 	// Delete old key first
 	pipe.Del(ctx, userFriendKey)
 	// Then set new friend list

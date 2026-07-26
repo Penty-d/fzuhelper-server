@@ -20,22 +20,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bytedance/sonic"
-
-	"github.com/west2-online/fzuhelper-server/pkg/base/environment"
+	"github.com/west2-online/fzuhelper-server/pkg/cache/internal/codec"
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/jwch"
 )
 
 func (c *CacheCommon) SetTermListCache(ctx context.Context, key string, list *jwch.SchoolCalendar) error {
-	if environment.IsTestEnvironment() {
-		return nil
-	}
-	termListJson, err := sonic.Marshal(list)
-	if err != nil {
-		return fmt.Errorf("dal.SetTermListCache: Marshal info failed: %w", err)
-	}
-	if err = c.client.Set(ctx, key, termListJson, constants.CommonTermListKeyExpire).Err(); err != nil {
+	if err := codec.SetJSON(ctx, c.client, key, list, constants.CommonTermListKeyExpire, "dal.SetTermListCache"); err != nil {
 		return fmt.Errorf("dal.SetTermListCache: Set cache failed: %w", err)
 	}
 	return nil

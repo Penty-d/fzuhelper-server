@@ -20,22 +20,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bytedance/sonic"
-
-	"github.com/west2-online/fzuhelper-server/pkg/base/environment"
+	"github.com/west2-online/fzuhelper-server/pkg/cache/internal/codec"
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 )
 
 func (c *CacheCourse) SetAutoAdjustCourseListCache(ctx context.Context, key string, list []*model.AutoAdjustCourse) error {
-	if environment.IsTestEnvironment() {
-		return nil
-	}
-	data, err := sonic.Marshal(list)
-	if err != nil {
-		return fmt.Errorf("dal.SetAutoAdjustCourseListCache: Marshal failed: %w", err)
-	}
-	if err = c.client.Set(ctx, key, data, constants.AutoAdjustCourseKeyExpire).Err(); err != nil {
+	if err := codec.SetJSON(ctx, c.client, key, list, constants.AutoAdjustCourseKeyExpire, "dal.SetAutoAdjustCourseListCache"); err != nil {
 		return fmt.Errorf("dal.SetAutoAdjustCourseListCache: Set cache failed: %w", err)
 	}
 	return nil

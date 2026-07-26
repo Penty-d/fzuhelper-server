@@ -19,27 +19,11 @@ package common
 import (
 	"context"
 
-	"github.com/bytedance/sonic"
-
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
-	"github.com/west2-online/fzuhelper-server/pkg/base/environment"
+	"github.com/west2-online/fzuhelper-server/pkg/cache/internal/codec"
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
-	"github.com/west2-online/fzuhelper-server/pkg/logger"
 )
 
 func (c *CacheCommon) SetContributorInfo(ctx context.Context, key string, contributors []*model.Contributor) error {
-	if environment.IsTestEnvironment() {
-		return nil
-	}
-	data, err := sonic.Marshal(contributors)
-	if err != nil {
-		logger.Errorf("dal.SetGetContributorInfo: Marshal contributor info failed: %v", err)
-		return err
-	}
-	err = c.client.Set(ctx, key, data, constants.KeyNeverExpire).Err()
-	if err != nil {
-		logger.Errorf("dal.SetGetContributorInfo: Set contributor infoo failed: %v", err)
-		return err
-	}
-	return nil
+	return codec.SetJSON(ctx, c.client, key, contributors, constants.KeyNeverExpire, "dal.SetContributorInfo")
 }

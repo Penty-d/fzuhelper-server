@@ -20,22 +20,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bytedance/sonic"
-
-	"github.com/west2-online/fzuhelper-server/pkg/base/environment"
+	"github.com/west2-online/fzuhelper-server/pkg/cache/internal/codec"
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 )
 
 func (c *CacheUser) SetStuInfoCache(ctx context.Context, key string, info *model.Student) error {
-	if environment.IsTestEnvironment() {
-		return nil
-	}
-	stuInfoJson, err := sonic.Marshal(info)
-	if err != nil {
-		return fmt.Errorf("dal.SetStuInfoCache: Marshal info failed: %w", err)
-	}
-	if err = c.client.Set(ctx, key, stuInfoJson, constants.UserInfoKeyExpire).Err(); err != nil {
+	if err := codec.SetJSON(ctx, c.client, key, info, constants.UserInfoKeyExpire, "dal.SetStuInfoCache"); err != nil {
 		return fmt.Errorf("dal.SetStuInfoCache: Set cache failed: %w", err)
 	}
 	return nil

@@ -25,6 +25,22 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
 
+const (
+	feedbackListDefaultLimit = 20  // GetFeedbackList 默认分页大小
+	feedbackListMaxLimit     = 100 // GetFeedbackList 单页数量上限
+)
+
+// normalizeNetworkEnv 校验 NetworkEnv 是否合法：合法值原样返回且 ok 为 true，否则归一为 NetworkUnknown
+func normalizeNetworkEnv(env model.NetworkEnv) (model.NetworkEnv, bool) {
+	switch env {
+	case model.Network2G, model.Network3G, model.Network4G,
+		model.Network5G, model.NetworkWifi, model.NetworkUnknown:
+		return env, true
+	default:
+		return model.NetworkUnknown, false
+	}
+}
+
 func (s *OAService) CreateFeedback(req *CreateFeedbackReq) (int64, error) {
 	// 检验 not null 部分（选择性检验）
 	if req.StuId == "" || req.Name == "" || req.College == "" ||
@@ -41,13 +57,10 @@ func (s *OAService) CreateFeedback(req *CreateFeedbackReq) (int64, error) {
 	req.UserSettings = utils.EnsureJSONObject(req.UserSettings)
 
 	// 将不合法 NetworkEnv 归为 Unknown
-	switch req.NetworkEnv {
-	case string(model.Network2G), string(model.Network3G), string(model.Network4G),
-		string(model.Network5G), string(model.NetworkWifi), string(model.NetworkUnknown):
-	default:
+	if env, ok := normalizeNetworkEnv(model.NetworkEnv(req.NetworkEnv)); !ok {
 		logger.WithCtx(s.ctx).Warnf("invalid NetworkEnv=%q, fallback=%q (stu_id=%s)",
 			req.NetworkEnv, model.NetworkUnknown, req.StuId)
-		req.NetworkEnv = string(model.NetworkUnknown)
+		req.NetworkEnv = string(env)
 	}
 
 	// 生成 reportID
@@ -102,13 +115,11 @@ func (s *OAService) GetFeedbackById(id int64) (*model.Feedback, error) {
 	fb.Events = utils.EnsureJSONArray(fb.Events)
 	fb.UserSettings = utils.EnsureJSONObject(fb.UserSettings)
 
-	switch fb.NetworkEnv {
-	case model.Network2G, model.Network3G, model.Network4G,
-		model.Network5G, model.NetworkWifi, model.NetworkUnknown:
-	default:
+	// 将不合法的存量 NetworkEnv 归为 Unknown
+	if env, ok := normalizeNetworkEnv(fb.NetworkEnv); !ok {
 		logger.WithCtx(s.ctx).Warnf("feedback has invalid stored NetworkEnv, coercing to %q (report_id=%d, original=%q, stu_id=%s)",
 			model.NetworkUnknown, fb.ReportId, fb.NetworkEnv, fb.StuId)
-		fb.NetworkEnv = model.NetworkUnknown
+		fb.NetworkEnv = env
 	}
 
 	return fb, nil
@@ -122,9 +133,9 @@ func (s *OAService) GetFeedbackList(req *FeedbackListReq) ([]model.FeedbackListI
 
 	// 调整limit
 	limit := req.Limit
-	if limit <= 0 || limit > 100 {
-		logger.WithCtx(s.ctx).Warnf("service.GetFeedbackList: limit out of range, fix to 20 (limit=%d)", limit)
-		limit = 20
+	if limit <= 0 || limit > feedbackListMaxLimit {
+		logger.WithCtx(s.ctx).Warnf("service.GetFeedbackList: limit out of range, fix to %d (limit=%d)", feedbackListDefaultLimit, limit)
+		limit = feedbackListDefaultLimit
 	}
 
 	// 去空白，防止空格
@@ -154,7 +165,7 @@ func (s *OAService) GetFeedbackList(req *FeedbackListReq) ([]model.FeedbackListI
 		return nil, 0, errno.Errorf(errno.InternalServiceErrorCode, "invalid time range")
 	}
 
-	// 排序方式（默认为升序）
+	// 排序方式（默认为降序）
 	orderDesc := true
 	if req.OrderDesc != nil {
 		orderDesc = *req.OrderDesc
@@ -163,14 +174,12 @@ func (s *OAService) GetFeedbackList(req *FeedbackListReq) ([]model.FeedbackListI
 	req.Limit = limit
 	req.OrderDesc = &orderDesc
 
+	// 空串表示不按 NetworkEnv 过滤，仅在非空时做合法性归一
 	if req.NetworkEnv != "" {
-		switch req.NetworkEnv {
-		case string(model.Network2G), string(model.Network3G), string(model.Network4G),
-			string(model.Network5G), string(model.NetworkWifi), string(model.NetworkUnknown):
-		default:
+		if env, ok := normalizeNetworkEnv(model.NetworkEnv(req.NetworkEnv)); !ok {
 			logger.WithCtx(s.ctx).Warnf("service.GetFeedbackList: invalid NetworkEnv=%q, coerce to %q",
 				req.NetworkEnv, string(model.NetworkUnknown))
-			req.NetworkEnv = string(model.NetworkUnknown)
+			req.NetworkEnv = string(env)
 		}
 	}
 

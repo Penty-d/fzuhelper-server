@@ -22,22 +22,25 @@ import (
 	"github.com/west2-online/yjsy"
 )
 
+// normalizeScore 统一规范化教务系统返回的原始成绩文案
+func normalizeScore(raw string) string {
+	switch raw {
+	case "成绩尚未录入":
+		return "暂无"
+	case "成绩只录一遍":
+		return "录入中"
+	}
+	return raw
+}
+
 func BuildScores(data []*jwch.Mark) []*model.Score {
 	scores := make([]*model.Score, len(data))
-	var score string
 	for i := 0; i < len(data); i++ {
-		score = data[i].Score
-		switch score {
-		case "成绩尚未录入":
-			score = "暂无"
-		case "成绩只录一遍":
-			score = "录入中"
-		}
 		scores[i] = &model.Score{
 			Credit:       data[i].Credits,
 			Gpa:          data[i].GPA,
 			Name:         data[i].Name,
-			Score:        score,
+			Score:        normalizeScore(data[i].Score),
 			Teacher:      data[i].Teacher,
 			Term:         data[i].Semester,
 			ExamType:     data[i].ExamType,
@@ -51,20 +54,12 @@ func BuildScores(data []*jwch.Mark) []*model.Score {
 
 func BuildScoresYjsy(data []*yjsy.Mark) []*model.Score {
 	scores := make([]*model.Score, len(data))
-	var score string
 	for i := 0; i < len(data); i++ {
-		score = data[i].Score
-		switch score {
-		case "成绩尚未录入":
-			score = "暂无"
-		case "成绩只录一遍":
-			data[i].Score = "录入中"
-		}
 		scores[i] = &model.Score{
 			Credit:       data[i].Credits,
 			Gpa:          data[i].GPA,
 			Name:         data[i].Name,
-			Score:        score,
+			Score:        normalizeScore(data[i].Score),
 			Teacher:      data[i].Teacher,
 			Term:         data[i].Semester,
 			ExamType:     data[i].ExamType,

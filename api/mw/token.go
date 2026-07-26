@@ -17,8 +17,11 @@ limitations under the License.
 package mw
 
 import (
+	"crypto"
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -32,6 +35,32 @@ type Claims struct {
 	StudentID string `json:"student_id"`
 	Type      int64  `json:"type"`
 	jwt.RegisteredClaims
+}
+
+// pubKey 缓存解析后的公钥，公钥是编译期常量，进程内只需解析一次
+var pubKey = sync.OnceValues(func() (crypto.PublicKey, error) {
+	return jwt.ParseEdPublicKeyFromPEM([]byte(constants.PublicKey))
+})
+
+// privKeyEntry 记录私钥 PEM 与其解析结果，用于避免每次签发 token 都重复做 PEM 解析
+type privKeyEntry struct {
+	pem string
+	key crypto.PrivateKey
+}
+
+var privKeyCache atomic.Pointer[privKeyEntry]
+
+// parsePrivateKey 解析私钥，私钥可能随配置热更变化，因此按 PEM 内容缓存
+func parsePrivateKey(pem string) (crypto.PrivateKey, error) {
+	if entry := privKeyCache.Load(); entry != nil && entry.pem == pem {
+		return entry.key, nil
+	}
+	key, err := jwt.ParseEdPrivateKeyFromPEM([]byte(pem))
+	if err != nil {
+		return nil, err
+	}
+	privKeyCache.Store(&privKeyEntry{pem: pem, key: key})
+	return key, nil
 }
 
 // CreateAllToken 创建一对 token，第一个是 access token，第二个是 refresh token
@@ -79,7 +108,7 @@ func CreateToken(tokenType int64, stuID string) (string, error) {
 	// 选择 Ed25519 是出于兼顾性能和安全性的考虑，PS512 安全性太高但性能不好，ES512 速度没有 Ed25519 快
 	// 这里不考虑旧版的对称加密
 	tokenStruct := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
-	key, err := jwt.ParseEdPrivateKeyFromPEM([]byte(config.Server.Secret))
+	key, err := parsePrivateKey(config.Server.Secret)
 	if err != nil {
 		return "", errno.AuthError.WithMessage(fmt.Sprintf("parse private key failed, err: %v", err))
 	}
@@ -97,23 +126,13 @@ func CheckToken(token string) (int64, string, error) {
 	if token == "" {
 		return -1, "", errno.AuthMissing
 	}
-	// 解析 token，但不进行签名验证
-	tokenStruct, _, err := new(jwt.Parser).ParseUnverified(token, &Claims{})
-	if err != nil {
-		return -1, "", errno.AuthInvalid.WithError(err)
-	}
 
-	unverifiedClaims, ok := tokenStruct.Claims.(*Claims)
-	if !ok {
-		return -1, "", errno.AuthError.WithMessage("cannot handle claims")
-	}
-
-	secret, err := jwt.ParseEdPublicKeyFromPEM([]byte(constants.PublicKey))
+	secret, err := pubKey()
 	if err != nil {
 		return -1, "", errno.AuthError.WithMessage(fmt.Sprintf("parse public key failed, err: %v", err))
 	}
 
-	// 使用正确的密钥再次解析 token
+	// 解析并验证 token，验证失败时返回的 token 中同样携带已解析的 claims，无需先做一次 ParseUnverified
 	response, err := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodEd25519); !ok {
 			return nil, errno.AuthError.WithMessage(fmt.Sprintf("unexpected signing method: %v", token.Header["alg"]))
@@ -122,11 +141,20 @@ func CheckToken(token string) (int64, string, error) {
 	})
 	// 验证 token 是否有效
 	if err != nil {
-		return unverifiedClaims.Type, "", checkError(err, unverifiedClaims.Type)
+		// 畸形 token 无法解析出 claims，保持与旧实现（ParseUnverified 失败）一致的错误码
+		var ve *jwt.ValidationError
+		if response == nil || (errors.As(err, &ve) && ve.Errors&jwt.ValidationErrorMalformed != 0) {
+			return -1, "", errno.AuthInvalid.WithError(err)
+		}
+		claims, ok := response.Claims.(*Claims)
+		if !ok {
+			return -1, "", errno.AuthError.WithMessage("cannot handle claims")
+		}
+		return claims.Type, "", checkError(err, claims.Type)
 	}
 
-	if _, ok := response.Claims.(*Claims); ok && response.Valid {
-		return unverifiedClaims.Type, unverifiedClaims.StudentID, nil
+	if claims, ok := response.Claims.(*Claims); ok && response.Valid {
+		return claims.Type, claims.StudentID, nil
 	}
 
 	return -1, "", errno.AuthInvalid

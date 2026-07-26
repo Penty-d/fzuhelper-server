@@ -18,7 +18,6 @@ package course
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/west2-online/fzuhelper-server/internal/course/pack"
 	"github.com/west2-online/fzuhelper-server/internal/course/service"
@@ -50,7 +49,7 @@ func (s *CourseServiceImpl) GetCourseList(ctx context.Context, req *course.Cours
 	resp = course.NewCourseListResponse()
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Course.GetCourseList: Get login data fail %w", err)
+		return base.Fail(resp, err)
 	}
 	stuId := loginData.Id
 	isGraduate := utils.IsGraduate(stuId)
@@ -68,10 +67,9 @@ func (s *CourseServiceImpl) GetCourseList(ctx context.Context, req *course.Cours
 		}
 	})
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Data = res
 	return resp, nil
 }
@@ -80,7 +78,7 @@ func (s *CourseServiceImpl) GetTermList(ctx context.Context, req *course.TermLis
 	resp = course.NewTermListResponse()
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Course.GetTermList: Get login data fail %w", err)
+		return base.Fail(resp, err)
 	}
 	stuId := loginData.Id
 	isGraduate := utils.IsGraduate(stuId)
@@ -95,10 +93,9 @@ func (s *CourseServiceImpl) GetTermList(ctx context.Context, req *course.TermLis
 		}
 	})
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Data = res
 	return resp, nil
 }
@@ -108,10 +105,9 @@ func (s *CourseServiceImpl) GetCalendar(ctx context.Context, req *course.GetCale
 
 	resp.Ics, err = service.NewCourseService(ctx, s.ClientSet, s.taskQueue).GetCalendar(req.StuId)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 
 	return resp, nil
 }
@@ -121,10 +117,9 @@ func (s *CourseServiceImpl) GetLocateDate(ctx context.Context, _ *course.GetLoca
 
 	res, err := service.NewCourseService(ctx, s.ClientSet, s.taskQueue).GetLocateDate()
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.LocateDate = res
 	return resp, nil
 }
@@ -135,14 +130,13 @@ func (s *CourseServiceImpl) GetFriendCourse(ctx context.Context, req *course.Get
 	resp = new(course.GetFriendCourseResponse)
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Course.GetFriendCourse: Get login data fail %w", err)
+		return base.Fail(resp, err)
 	}
 	res, err := service.NewCourseService(ctx, s.ClientSet, s.taskQueue).GetFriendCourse(req, loginData)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Data = res
 	return resp, nil
 }
@@ -154,10 +148,9 @@ func (s *CourseServiceImpl) GetAutoAdjustCourseList(ctx context.Context, req *co
 
 	list, err := service.NewCourseService(ctx, s.ClientSet, s.taskQueue).GetAutoAdjustCourseList(req.Term)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Data = pack.BuildAdjustCourseList(list)
 	return resp, nil
 }
@@ -168,9 +161,8 @@ func (s *CourseServiceImpl) UpdateAdjustCourse(ctx context.Context, req *course.
 	resp = new(course.UpdateAdjustCourseResponse)
 	err = service.NewCourseService(ctx, s.ClientSet, s.taskQueue).UpdateAutoAdjustCourse(req)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	return resp, nil
 }

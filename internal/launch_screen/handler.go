@@ -66,7 +66,7 @@ func (s *LaunchScreenServiceImpl) CreateImage(stream launch_screen.LaunchScreenS
 		resp.Base = base.BuildBaseResp(err)
 		return stream.SendAndClose(resp)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Picture = pack.BuildImageResp(pic)
 	return stream.SendAndClose(resp)
 }
@@ -78,11 +78,11 @@ func (s *LaunchScreenServiceImpl) GetImage(ctx context.Context, req *launch_scre
 	resp = new(launch_screen.GetImageResponse)
 
 	pic, err := service.NewLaunchScreenService(ctx, s.ClientSet).GetImageById(req.PictureId)
-	resp.Base = base.BuildBaseResp(err)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("LaunchScreen.GetImage: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
+	base.OK(resp)
 	resp.Picture = pack.BuildImageResp(pic)
 	return resp, nil
 }
@@ -93,11 +93,11 @@ func (s *LaunchScreenServiceImpl) ChangeImageProperty(ctx context.Context,
 ) (resp *launch_screen.ChangeImagePropertyResponse, err error) {
 	resp = new(launch_screen.ChangeImagePropertyResponse)
 	pic, err := service.NewLaunchScreenService(ctx, s.ClientSet).UpdateImageProperty(req)
-	resp.Base = base.BuildBaseResp(err)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("LaunchScreen.ChangeImageProperty: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
+	base.OK(resp)
 	resp.Picture = pack.BuildImageResp(pic)
 	return resp, nil
 }
@@ -129,7 +129,7 @@ func (s *LaunchScreenServiceImpl) ChangeImage(stream launch_screen.LaunchScreenS
 		resp.Base = base.BuildBaseResp(err)
 		return stream.SendAndClose(resp)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Picture = pack.BuildImageResp(pic)
 	return stream.SendAndClose(resp)
 }
@@ -140,12 +140,11 @@ func (s *LaunchScreenServiceImpl) DeleteImage(ctx context.Context, req *launch_s
 
 	err = service.NewLaunchScreenService(ctx, s.ClientSet).DeleteImage(req.PictureId, req.Secret)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
 		logger.WithCtx(ctx).Infof("LaunchScreen.DeleteImage: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	// resp.Picture = pack.BuildImageResp(pic)
 	return resp, nil
 }
@@ -157,12 +156,11 @@ func (s *LaunchScreenServiceImpl) MobileGetImage(ctx context.Context, req *launc
 	resp = new(launch_screen.MobileGetImageResponse)
 	pictureList, cnt, err := service.NewLaunchScreenService(ctx, s.ClientSet).MobileGetImage(req)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
 		logger.WithCtx(ctx).Infof("LaunchScreen.MobileGetImage: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Count = &cnt
 	resp.PictureList = pack.BuildImagesResp(pictureList)
 	return resp, nil

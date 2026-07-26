@@ -64,11 +64,11 @@ func (s *VersionServiceImpl) UploadVersion(ctx context.Context, req *version.Upl
 func (s *VersionServiceImpl) UploadParams(ctx context.Context, req *version.UploadParamsRequest) (resp *version.UploadParamsResponse, err error) {
 	resp = new(version.UploadParamsResponse)
 	policy, auth, err := service.NewVersionService(ctx, s.ClientSet).UploadParams(req)
-	resp.Base = base.BuildBaseResp(err)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("Version.UploadParams: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
+	base.OK(resp)
 	resp.Policy = &policy
 	resp.Authorization = &auth
 	return resp, nil
@@ -82,11 +82,11 @@ func (s *VersionServiceImpl) DownloadReleaseApk(ctx context.Context, req *versio
 	redirectUrl, err := singleflight.Do(constants.SingleflightDownloadReleaseKey, func() (string, error) {
 		return service.NewVersionService(ctx, s.ClientSet).DownloadReleaseApk()
 	})
-	resp.Base = base.BuildBaseResp(err)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("Version.DownloadReleaseApk: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
+	base.OK(resp)
 	resp.RedirectUrl = redirectUrl
 	return resp, nil
 }
@@ -99,11 +99,11 @@ func (s *VersionServiceImpl) DownloadBetaApk(ctx context.Context, req *version.D
 	redirectUrl, err := singleflight.Do(constants.SingleflightDownloadBetaKey, func() (string, error) {
 		return service.NewVersionService(ctx, s.ClientSet).DownloadBetaApk()
 	})
-	resp.Base = base.BuildBaseResp(err)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("Version.DownloadBetaApk: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
+	base.OK(resp)
 	resp.RedirectUrl = redirectUrl
 	return resp, nil
 }
@@ -116,11 +116,11 @@ func (s *VersionServiceImpl) GetReleaseVersion(ctx context.Context, req *version
 	res, err := singleflight.Do(constants.SingleflightReleaseVersionKey, func() (*pack.Version, error) {
 		return service.NewVersionService(ctx, s.ClientSet).GetReleaseVersion()
 	})
-	resp.Base = base.BuildBaseResp(err)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("Version.GetReleaseVersion: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
+	base.OK(resp)
 	resp.Version = &res.Version
 	resp.Url = &res.Url
 	resp.Feature = &res.Feature
@@ -135,11 +135,11 @@ func (s *VersionServiceImpl) GetBetaVersion(ctx context.Context, req *version.Ge
 	res, err := singleflight.Do(constants.SingleflightBetaVersionKey, func() (*pack.Version, error) {
 		return service.NewVersionService(ctx, s.ClientSet).GetBetaVersion()
 	})
-	resp.Base = base.BuildBaseResp(err)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("Version.GetBetaVersion: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
+	base.OK(resp)
 	resp.Version = &res.Version
 	resp.Url = &res.Url
 	resp.Feature = &res.Feature
@@ -178,11 +178,11 @@ func (s *VersionServiceImpl) GetCloud(ctx context.Context, req *version.GetCloud
 	setting, err := singleflight.Do(constants.SingleflightCloudKey, func() (*[]byte, error) {
 		return service.NewVersionService(ctx, s.ClientSet).GetAllCloudSetting()
 	})
-	resp.Base = base.BuildBaseResp(err)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("Version.GetCloud: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
+	base.OK(resp)
 	resp.CloudSetting = *setting
 	return resp, nil
 }
@@ -199,11 +199,11 @@ func (s *VersionServiceImpl) SetCloud(ctx context.Context, req *version.SetCloud
 func (s *VersionServiceImpl) GetDump(ctx context.Context, req *version.GetDumpRequest) (resp *version.GetDumpResponse, err error) {
 	resp = new(version.GetDumpResponse)
 	dump, err := service.NewVersionService(ctx, s.ClientSet).GetDump()
-	resp.Base = base.BuildBaseResp(err)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("Version.GetDump: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
+	base.OK(resp)
 	resp.Data = dump
 	return resp, nil
 }
@@ -220,11 +220,11 @@ func (s *VersionServiceImpl) AndroidGetVersion(ctx context.Context, req *version
 		}
 		return androidVersionResult{release: r, beta: b}, nil
 	})
-	resp.Base = base.BuildBaseResp(err)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("Version.AndroidGetVersion: %v", err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
+	base.OK(resp)
 	resp.Release = pack.BuildVersion(result.release)
 	resp.Beta = pack.BuildVersion(result.beta)
 	return resp, err

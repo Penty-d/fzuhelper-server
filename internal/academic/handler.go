@@ -18,7 +18,6 @@ package academic
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/west2-online/fzuhelper-server/internal/academic/pack"
 	"github.com/west2-online/fzuhelper-server/internal/academic/service"
@@ -51,7 +50,7 @@ func (s *AcademicServiceImpl) GetScores(ctx context.Context, _ *academic.GetScor
 	resp = academic.NewGetScoresResponse()
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Academic.GetScores: Get login data fail %w", err)
+		return base.Fail(resp, err)
 	}
 	stuId := loginData.Id
 	isGraduate := utils.IsGraduate(stuId)
@@ -61,11 +60,10 @@ func (s *AcademicServiceImpl) GetScores(ctx context.Context, _ *academic.GetScor
 			return service.NewAcademicService(ctx, s.ClientSet, s.taskQueue).GetScoresYjsy(loginData)
 		})
 		if err != nil {
-			resp.Base = base.BuildBaseResp(err)
-			return resp, nil
+			return base.Fail(resp, err)
 		}
 
-		resp.Base = base.BuildSuccessResp()
+		base.OK(resp)
 		resp.Scores = pack.BuildScoresYjsy(scores)
 		return resp, nil
 	} else {
@@ -73,11 +71,10 @@ func (s *AcademicServiceImpl) GetScores(ctx context.Context, _ *academic.GetScor
 			return service.NewAcademicService(ctx, s.ClientSet, s.taskQueue).GetScores(loginData)
 		})
 		if err != nil {
-			resp.Base = base.BuildBaseResp(err)
-			return resp, nil
+			return base.Fail(resp, err)
 		}
 
-		resp.Base = base.BuildSuccessResp()
+		base.OK(resp)
 		resp.Scores = pack.BuildScores(scores)
 		return resp, nil
 	}
@@ -90,10 +87,9 @@ func (s *AcademicServiceImpl) GetGPA(ctx context.Context, _ *academic.GetGPARequ
 
 	gpa, err = service.NewAcademicService(ctx, s.ClientSet, nil).GetGPA()
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Gpa = pack.BuildGPA(gpa)
 	return resp, nil
 }
@@ -105,10 +101,9 @@ func (s *AcademicServiceImpl) GetCredit(ctx context.Context, _ *academic.GetCred
 
 	credit, err = service.NewAcademicService(ctx, s.ClientSet, nil).GetCredit()
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Major = pack.BuildCredit(credit)
 	// TODO:辨别本专业和辅修专业
 	return resp, nil
@@ -121,11 +116,10 @@ func (s *AcademicServiceImpl) GetUnifiedExam(ctx context.Context, _ *academic.Ge
 
 	unifiedExam, err = service.NewAcademicService(ctx, s.ClientSet, nil).GetUnifiedExam()
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.UnifiedExam = pack.BuildUnifiedExam(unifiedExam)
 	return resp, nil
 }
@@ -135,10 +129,9 @@ func (s *AcademicServiceImpl) GetPlan(ctx context.Context, _ *academic.GetPlanRe
 	resp = new(academic.GetPlanResponse)
 	url, err := service.NewAcademicService(ctx, s.ClientSet, nil).GetPlan()
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Url = url
 	return resp, nil
 }
@@ -148,10 +141,9 @@ func (s *AcademicServiceImpl) GetCreditV2(ctx context.Context, _ *academic.GetCr
 	resp = academic.NewGetCreditV2Response()
 	credit, err := service.NewAcademicService(ctx, s.ClientSet, nil).GetCreditV2()
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Credit = pack.BuildCreditResponse(credit)
 	return resp, nil
 }

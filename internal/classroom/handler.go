@@ -58,8 +58,7 @@ func (s *ClassroomServiceImpl) GetEmptyRoom(ctx context.Context, req *classroom.
 	requestDate, err := utils.TimeParse(req.Date)
 	if err != nil {
 		logger.WithCtx(ctx).Errorf("Classroom.GetEmptyRoom: date format error, err: %v", err)
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	now := time.Now().Truncate(constants.ONE_DAY)
 	requestDate = requestDate.Truncate(constants.ONE_DAY)
@@ -67,17 +66,15 @@ func (s *ClassroomServiceImpl) GetEmptyRoom(ctx context.Context, req *classroom.
 	if dateDiff < MinDateDiff || dateDiff > MaxDateDiff {
 		err = fmt.Errorf("date out of range, date: %v", req.Date)
 		logger.WithCtx(ctx).Infof("Classroom.GetEmptyRoom: %v", err)
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 
 	res, err := service.NewClassroomService(ctx, s.ClientSet).GetEmptyRoom(req)
 	if err != nil {
 		logger.WithCtx(ctx).Infof("Classroom.GetEmptyRoom: GetEmptyRoom failed, err: %v", err)
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Rooms = pack.BuildClassRooms(res, req.Campus)
 	// logger.WithCtx(ctx).Info("Classroom.GetEmptyRoom: GetEmptyRoom success")
 	return resp, nil
@@ -87,7 +84,7 @@ func (s *ClassroomServiceImpl) GetExamRoomInfo(ctx context.Context, req *classro
 	resp = classroom.NewExamRoomInfoResponse()
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Classroom.GetExamRoomInfo: Get login data fail %w", err)
+		return base.Fail(resp, err)
 	}
 	stuId := loginData.Id
 	isGraduate := utils.IsGraduate(stuId)
@@ -102,10 +99,9 @@ func (s *ClassroomServiceImpl) GetExamRoomInfo(ctx context.Context, req *classro
 		}
 	})
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Rooms = rooms
 	return resp, nil
 }

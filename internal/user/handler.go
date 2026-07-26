@@ -51,10 +51,9 @@ func (s *UserServiceImpl) GetLoginData(ctx context.Context, req *user.GetLoginDa
 	l := service.NewUserService(ctx, "", nil, s.ClientSet, s.taskQueue)
 	id, cookies, err := l.GetLoginData(req)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Id = id
 	resp.Cookies = cookies
 	return resp, err
@@ -65,8 +64,7 @@ func (s *UserServiceImpl) GetUserInfo(ctx context.Context, request *user.GetUser
 	resp = new(user.GetUserInfoResponse)
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	stuId := loginData.Id
 	isGraduate := utils.IsGraduate(stuId)
@@ -80,10 +78,9 @@ func (s *UserServiceImpl) GetUserInfo(ctx context.Context, request *user.GetUser
 		return l.GetUserInfo(metainfoContext.ExtractIDFromLoginData(loginData))
 	})
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Data = pack.BuildInfoResp(info)
 	return resp, nil
 }
@@ -96,10 +93,9 @@ func (s *UserServiceImpl) GetGetLoginDataForYJSY(ctx context.Context, req *user.
 	l := service.NewUserService(ctx, "", nil, s.ClientSet, s.taskQueue)
 	cookies, err := l.GetLoginDataForYJSY(req)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Id = utils.MarkGraduate(req.Id) // yjsy的访问不需要id，5个前导0+学号表示研究生标识
 	resp.Cookies = cookies
 	return resp, err
@@ -112,16 +108,14 @@ func (s *UserServiceImpl) GetInvitationCode(ctx context.Context, request *user.G
 	resp = new(user.GetInvitationCodeResponse)
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	l := service.NewUserService(ctx, loginData.Id, utils.ParseCookies(loginData.Cookies), s.ClientSet, s.taskQueue)
 	code, expireAt, err := l.GetInvitationCode(metainfoContext.ExtractIDFromLoginData(loginData), request.GetIsRefresh())
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.InvitationCode = code
 	resp.ExpireAt = expireAt
 	return resp, err
@@ -134,16 +128,14 @@ func (s *UserServiceImpl) BindInvitation(ctx context.Context, request *user.Bind
 	resp = new(user.BindInvitationResponse)
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	l := service.NewUserService(ctx, loginData.Id, utils.ParseCookies(loginData.Cookies), s.ClientSet, s.taskQueue)
 	err = l.BindInvitation(metainfoContext.ExtractIDFromLoginData(loginData), request.InvitationCode)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	return resp, err
 }
 
@@ -154,8 +146,7 @@ func (s *UserServiceImpl) GetFriendList(ctx context.Context, request *user.GetFr
 	resp = new(user.GetFriendListResponse)
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	stuId := metainfoContext.ExtractIDFromLoginData(loginData)
 	key := singleflight.Key(constants.SingleflightFriendListPrefix, stuId)
@@ -165,11 +156,10 @@ func (s *UserServiceImpl) GetFriendList(ctx context.Context, request *user.GetFr
 		return l.GetFriendList(stuId)
 	})
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	resp.Data = data
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	return resp, err
 }
 
@@ -180,16 +170,14 @@ func (s *UserServiceImpl) DeleteFriend(ctx context.Context, request *user.Delete
 	resp = new(user.DeleteFriendResponse)
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	l := service.NewUserService(ctx, loginData.Id, utils.ParseCookies(loginData.Cookies), s.ClientSet, s.taskQueue)
 	err = l.DeleteUserFriend(loginData, request.Id)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	return resp, err
 }
 
@@ -199,11 +187,10 @@ func (s *UserServiceImpl) VerifyFriend(ctx context.Context, request *user.Verify
 	resp = new(user.VerifyFriendResponse)
 	res, err := service.NewUserService(ctx, "", nil, s.ClientSet, s.taskQueue).VerifyUserFriend(request.Id, request.FriendId)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	resp.FriendExist = res
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	return resp, err
 }
 
@@ -213,16 +200,14 @@ func (s *UserServiceImpl) CancelInvite(ctx context.Context, request *user.Cancel
 	resp = new(user.CancelInviteResponse)
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	l := service.NewUserService(ctx, loginData.Id, utils.ParseCookies(loginData.Cookies), s.ClientSet, s.taskQueue)
 	err = l.CancelInvitationCode(loginData)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	return resp, err
 }
 
@@ -233,13 +218,12 @@ func (s *UserServiceImpl) GetFriendMaxNum(ctx context.Context, request *user.Get
 	resp = new(user.GetFriendMaxNumResponse)
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	l := service.NewUserService(ctx, loginData.Id, utils.ParseCookies(loginData.Cookies), s.ClientSet, s.taskQueue)
 	maxNum := l.GetFriendMaxNum(metainfoContext.ExtractIDFromLoginData(loginData))
 	resp.Data = &model.FriendMaxNumInfo{MaxNum: maxNum}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	return resp, nil
 }
 
@@ -250,15 +234,13 @@ func (s *UserServiceImpl) ReorderFriendList(ctx context.Context, request *user.R
 	resp = new(user.ReorderFriendListResponse)
 	loginData, err := metainfoContext.GetLoginData(ctx)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
 	l := service.NewUserService(ctx, loginData.Id, utils.ParseCookies(loginData.Cookies), s.ClientSet, s.taskQueue)
 	err = l.ReorderFriendList(metainfoContext.ExtractIDFromLoginData(loginData), request.FriendIds)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	return resp, nil
 }

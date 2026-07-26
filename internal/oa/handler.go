@@ -41,11 +41,10 @@ func (s *OAServiceImpl) CreateFeedback(ctx context.Context, req *oa.CreateFeedba
 	l := service.NewOAService(ctx, "", nil, s.ClientSet)
 	reportID, err := l.CreateFeedback(pack.BuildServiceCreateFeedbackReq(req))
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
 		resp.ReportId = reportID
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.ReportId = reportID
 	return resp, nil
 }
@@ -55,10 +54,9 @@ func (s *OAServiceImpl) GetFeedbackById(ctx context.Context, req *oa.GetFeedback
 	l := service.NewOAService(ctx, "", nil, s.ClientSet)
 	fb, err := l.GetFeedbackById(req.ReportId)
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Data = pack.BuildOAFeedbackDetailResponse(fb)
 	return resp, nil
 }
@@ -68,10 +66,9 @@ func (s *OAServiceImpl) GetFeedbackList(ctx context.Context, req *oa.GetListFeed
 	l := service.NewOAService(ctx, "", nil, s.ClientSet)
 	items, next, err := l.GetFeedbackList(pack.BuildServiceFeedbackListReq(req))
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Data = pack.BuildOAListItems(items)
 	resp.PageToken = &next
 	return resp, nil

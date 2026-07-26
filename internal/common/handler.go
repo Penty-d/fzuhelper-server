@@ -101,11 +101,10 @@ func (s *CommonServiceImpl) GetTermsList(ctx context.Context, req *common.TermLi
 		return service.NewCommonService(ctx, s.ClientSet, s.taskQueue).GetTermList()
 	})
 	if err != nil {
-		resp.Base = base.BuildBaseResp(fmt.Errorf("Common.GetTermsList: get terms list failed: %w", err))
-		return resp, nil
+		return base.Fail(resp, fmt.Errorf("Common.GetTermsList: get terms list failed: %w", err))
 	}
 
-	resp.Base = base.BuildBaseResp(nil)
+	base.OK(resp)
 	resp.TermLists = pack.BuildTermsList(res)
 	return resp, err
 }
@@ -130,11 +129,10 @@ func (s *CommonServiceImpl) GetTerm(ctx context.Context, req *common.TermRequest
 	}
 
 	if !result.success {
-		resp.Base = base.BuildBaseResp(fmt.Errorf("Common.GetTerm: get term failed: %w", err))
-		return resp, nil
+		return base.Fail(resp, fmt.Errorf("Common.GetTerm: get term failed: %w", err))
 	}
 
-	resp.Base = base.BuildBaseResp(nil)
+	base.OK(resp)
 	resp.TermInfo = pack.BuildTermInfo(result.events)
 	return resp, err
 }
@@ -150,10 +148,9 @@ func (s *CommonServiceImpl) GetNotices(ctx context.Context, req *common.NoticeRe
 		return noticeResult{list: list, total: total}, nil
 	})
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Notices = pack.BuildNoticeList(result.list)
 	resp.Total = int64(result.total)
 	return resp, err
@@ -165,10 +162,9 @@ func (s *CommonServiceImpl) GetContributorInfo(ctx context.Context,
 
 	res, err := service.NewCommonService(ctx, s.ClientSet, s.taskQueue).GetContributorInfo()
 	if err != nil {
-		resp.Base = base.BuildBaseResp(err)
-		return resp, nil
+		return base.Fail(resp, err)
 	}
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.FzuhelperApp = res[constants.ContributorFzuhelperAppKey]
 	resp.FzuhelperServer = res[constants.ContributorFzuhelperServerKey]
 	resp.Jwch = res[constants.ContributorJwchKey]
@@ -199,11 +195,10 @@ func (s *CommonServiceImpl) GetToolboxConfig(ctx context.Context,
 	// 调用service获取配置
 	dbConfigs, err := service.NewCommonService(ctx, s.ClientSet, s.taskQueue).GetToolboxConfig(ctx, studentID, platform, version)
 	if err != nil {
-		r.Base = base.BuildBaseResp(err)
-		return r, nil
+		return base.Fail(r, err)
 	}
 
-	r.Base = base.BuildSuccessResp()
+	base.OK(r)
 	r.Config = pack.BuildToolboxConfigList(dbConfigs)
 	return r, nil
 }
@@ -229,11 +224,10 @@ func (s *CommonServiceImpl) GetToolboxConfigList(ctx context.Context,
 		pageSize,
 	)
 	if err != nil {
-		r.Base = base.BuildBaseResp(err)
-		return r, nil
+		return base.Fail(r, err)
 	}
 
-	r.Base = base.BuildSuccessResp()
+	base.OK(r)
 	r.Config = pack.BuildToolboxConfigDetailList(dbConfigs)
 	r.Total = total
 	return r, nil
@@ -275,11 +269,10 @@ func (s *CommonServiceImpl) PutToolboxConfig(ctx context.Context,
 		req.Extra,
 	)
 	if err != nil {
-		r.Base = base.BuildBaseResp(err)
-		return r, nil
+		return base.Fail(r, err)
 	}
 
-	r.Base = base.BuildSuccessResp()
+	base.OK(r)
 	r.ConfigId = &config.Id
 	return r, nil
 }
@@ -289,7 +282,7 @@ func (s *CommonServiceImpl) TracePing(ctx context.Context, req *common.TracePing
 	logger.WithCtx(ctx).Info("RPC trace ping request received")
 
 	resp = new(common.TracePingResponse)
-	resp.Base = base.BuildSuccessResp()
+	base.OK(resp)
 	resp.Message = "pong"
 	return resp, nil
 }

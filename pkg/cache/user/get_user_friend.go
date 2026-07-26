@@ -63,22 +63,23 @@ func (c *CacheUser) GetCodeStuIdMappingCache(ctx context.Context, key string) (s
 	return value, nil
 }
 
-func (c *CacheUser) GetUserFriendCache(ctx context.Context, key string) (friendList []*model.UserFriend, err error) {
+// GetUserFriendCache 获取好友关系缓存; key 不存在(HGETALL 返回空结果)时返回 found=false 且不视为错误
+func (c *CacheUser) GetUserFriendCache(ctx context.Context, key string) (friendList []*model.UserFriend, found bool, err error) {
 	results, err := c.client.HGetAll(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return nil, nil
+			return nil, false, nil
 		}
-		return nil, fmt.Errorf("dal.GetUserFriendCache: Get cache failed: %w", err)
+		return nil, false, fmt.Errorf("dal.GetUserFriendCache: Get cache failed: %w", err)
 	}
 	if len(results) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 	friendList = make([]*model.UserFriend, 0, len(results))
 	for friendId, raw := range results {
 		var val userFriendCacheValue
 		if err := json.Unmarshal([]byte(raw), &val); err != nil {
-			return nil, fmt.Errorf("dal.GetUserFriendCache: unmarshal failed for %s: %w", friendId, err)
+			return nil, false, fmt.Errorf("dal.GetUserFriendCache: unmarshal failed for %s: %w", friendId, err)
 		}
 		friendList = append(friendList, &model.UserFriend{
 			FriendId:  friendId,
@@ -93,11 +94,11 @@ func (c *CacheUser) GetUserFriendCache(ctx context.Context, key string) (friendL
 		}
 		return friendList[i].CreatedAt.Before(friendList[j].CreatedAt)
 	})
-	return friendList, nil
+	return friendList, true, nil
 }
 
 func (c *CacheUser) IsFriendCache(ctx context.Context, stuId, friendId string) (bool, error) {
-	userFriendKey := fmt.Sprintf("user_friends:%v", stuId)
+	userFriendKey := fmt.Sprintf(constants.UserFriendsKeyFormat, stuId)
 	exists, err := c.client.HExists(ctx, userFriendKey, friendId).Result()
 	if err != nil {
 		return false, fmt.Errorf("IsFriendCache: check failed: %w", err)

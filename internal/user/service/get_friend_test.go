@@ -18,7 +18,6 @@ package service
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/bytedance/mockey"
@@ -162,39 +161,41 @@ func TestGetFriendList(t *testing.T) {
 				_ = task.Execute()
 			}).Build()
 
-			mockey.Mock((*cache.Cache).IsKeyExist).To(func(ctx context.Context, key string) bool {
-				if strings.Contains(key, "user_friends:") {
-					return tc.cacheFriendListExist
-				}
-				return tc.cacheStuInfoExist
-			}).Build()
-
-			mockey.Mock((*user.CacheUser).GetUserFriendCache).Return(tc.cacheFriendIds, tc.cacheFriendListError).Build()
+			// 好友关系缓存 getter 自带未命中判定, 通过 found 返回值区分命中/未命中
+			mockey.Mock((*user.CacheUser).GetUserFriendCache).Return(tc.cacheFriendIds, tc.cacheFriendListExist, tc.cacheFriendListError).Build()
 
 			mockey.Mock((*userDB.DBUser).GetUserFriends).Return(tc.dbFriendIds, tc.dbFriendIdsError).Build()
 
-			mockey.Mock((*user.CacheUser).GetStuInfoCache).To(func(ctx context.Context, key string) (*dbmodel.Student, error) {
+			mockey.Mock((*user.CacheUser).GetStuInfosCache).To(func(ctx context.Context, keys []string) (map[string]*dbmodel.Student, error) {
+				stuInfos := make(map[string]*dbmodel.Student, len(keys))
+				if !tc.cacheStuInfoExist {
+					return stuInfos, nil
+				}
 				if tc.cacheStuInfoError != nil {
 					return nil, tc.cacheStuInfoError
 				}
-				if tc.cacheStuInfoMap != nil {
+				for _, key := range keys {
 					if stuInfo, exists := tc.cacheStuInfoMap[key]; exists {
-						return stuInfo, nil
+						stuInfos[key] = stuInfo
 					}
 				}
-				return nil, nil
+				return stuInfos, nil
 			}).Build()
 
-			mockey.Mock((*userDB.DBUser).GetStudentById).To(func(ctx context.Context, stuId string) (bool, *dbmodel.Student, error) {
+			mockey.Mock((*userDB.DBUser).GetStudentsByIds).To(func(ctx context.Context, stuIds []string) ([]*dbmodel.Student, error) {
 				if tc.dbStuInfoError != nil {
-					return false, nil, tc.dbStuInfoError
+					return nil, tc.dbStuInfoError
 				}
-				if tc.dbStuInfoMap != nil {
-					if stuInfo, exists := tc.dbStuInfoMap[stuId]; exists {
-						return tc.dbStuInfoExist, stuInfo, nil
+				students := make([]*dbmodel.Student, 0, len(stuIds))
+				if !tc.dbStuInfoExist {
+					return students, nil
+				}
+				for _, id := range stuIds {
+					if stuInfo, exists := tc.dbStuInfoMap[id]; exists {
+						students = append(students, stuInfo)
 					}
 				}
-				return tc.dbStuInfoExist, nil, nil
+				return students, nil
 			}).Build()
 
 			friendList, err := userService.GetFriendList(stuId)

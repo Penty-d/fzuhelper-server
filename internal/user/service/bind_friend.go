@@ -19,12 +19,13 @@ package service
 import (
 	"fmt"
 
+	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 )
 
 func (s *UserService) BindInvitation(stuId, code string) error {
-	mapKey := fmt.Sprintf("code_mapping:%s", code)
+	mapKey := fmt.Sprintf(constants.CodeMappingKeyFormat, code)
 	exist := s.cache.IsKeyExist(s.ctx, mapKey)
 	if !exist {
 		return fmt.Errorf("无效邀请码")
@@ -70,9 +71,9 @@ func (s *UserService) BindInvitation(stuId, code string) error {
 	}
 
 	// 同步清除缓存，避免 DB 写入后客户端立即查询仍读到旧数据
-	codeKey := fmt.Sprintf("codes:%s", friendId)
-	userFriendKey := fmt.Sprintf("user_friends:%v", stuId)
-	targetFriendKey := fmt.Sprintf("user_friends:%v", friendId)
+	codeKey := fmt.Sprintf(constants.InvitationCodeKeyFormat, friendId)
+	userFriendKey := fmt.Sprintf(constants.UserFriendsKeyFormat, stuId)
+	targetFriendKey := fmt.Sprintf(constants.UserFriendsKeyFormat, friendId)
 
 	if s.cache.IsKeyExist(s.ctx, userFriendKey) {
 		if err = s.cache.User.InvalidateFriendListCache(s.ctx, stuId); err != nil {
@@ -94,27 +95,20 @@ func (s *UserService) BindInvitation(stuId, code string) error {
 }
 
 func (s *UserService) IsFriendNumsConfined(stuId string, maxNum int64) (bool, error) {
-	userFriendKey := fmt.Sprintf("user_friends:%v", stuId)
-	exist := s.cache.IsKeyExist(s.ctx, userFriendKey)
-	if exist {
-		friends, err := s.cache.User.GetUserFriendCache(s.ctx, userFriendKey)
-		if err != nil {
-			return false, fmt.Errorf("service.IsFriendNumsConfined get user friend cache: %w", err)
-		}
-		if int64(len(friends)) >= maxNum {
-			return true, nil
-		}
-		return false, nil
-	} else {
-		length, err := s.db.User.GetUserFriendListLength(s.ctx, stuId)
-		if err != nil {
-			return false, fmt.Errorf("service.IsFriendNumsConfined get user friend length db: %w", err)
-		}
-		if length >= maxNum {
-			return true, nil
-		}
-		return false, nil
+	userFriendKey := fmt.Sprintf(constants.UserFriendsKeyFormat, stuId)
+	// getter 自带未命中判定, 单次 round-trip 完成读缓存; 过期竞态会自然回源而不是报错
+	friends, ok, err := s.cache.User.GetUserFriendCache(s.ctx, userFriendKey)
+	if err != nil {
+		return false, fmt.Errorf("service.IsFriendNumsConfined get user friend cache: %w", err)
 	}
+	if ok {
+		return int64(len(friends)) >= maxNum, nil
+	}
+	length, err := s.db.User.GetUserFriendListLength(s.ctx, stuId)
+	if err != nil {
+		return false, fmt.Errorf("service.IsFriendNumsConfined get user friend length db: %w", err)
+	}
+	return length >= maxNum, nil
 }
 
 func (s *UserService) writeRelationToDB(followedId, followerId string) error {

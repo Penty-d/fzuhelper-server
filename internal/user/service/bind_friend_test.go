@@ -340,8 +340,8 @@ func TestIsFriendNumsConfined(t *testing.T) {
 				CacheClient: new(cache.Cache),
 			}
 
-			mockey.Mock((*cache.Cache).IsKeyExist).Return(tc.cacheExist).Build()
-			mockey.Mock((*user.CacheUser).GetUserFriendCache).Return(tc.cacheFriends, tc.cacheError).Build()
+			// 好友关系缓存 getter 自带未命中判定, 通过 found 返回值区分命中/未命中
+			mockey.Mock((*user.CacheUser).GetUserFriendCache).Return(tc.cacheFriends, tc.cacheExist, tc.cacheError).Build()
 			mockey.Mock((*userDB.DBUser).GetUserFriendListLength).Return(tc.dbLength, tc.dbError).Build()
 
 			userService := NewUserService(context.Background(), "", nil, mockClientSet, new(taskqueue.BaseTaskQueue))

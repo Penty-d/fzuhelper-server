@@ -21,21 +21,18 @@ import (
 
 	"github.com/west2-online/fzuhelper-server/internal/user/pack"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
-	db "github.com/west2-online/fzuhelper-server/pkg/db/model"
+	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/taskqueue"
 )
 
 func (s *UserService) GetFriendList(stuId string) ([]*model.UserFriendInfo, error) {
-	userFriendKey := fmt.Sprintf("user_friends:%v", stuId)
-	exist := s.cache.IsKeyExist(s.ctx, userFriendKey)
-	var friendRelation []*db.UserFriend
-	var err error
-	if exist {
-		friendRelation, err = s.cache.User.GetUserFriendCache(s.ctx, userFriendKey)
-		if err != nil {
-			return nil, fmt.Errorf("service.GetUserFriendCache: %w", err)
-		}
-	} else {
+	userFriendKey := fmt.Sprintf(constants.UserFriendsKeyFormat, stuId)
+	// getter 自带未命中判定, 单次 round-trip 完成读缓存; 过期竞态会自然回源而不是报错
+	friendRelation, ok, err := s.cache.User.GetUserFriendCache(s.ctx, userFriendKey)
+	if err != nil {
+		return nil, fmt.Errorf("service.GetUserFriendCache: %w", err)
+	}
+	if !ok {
 		if friendRelation, err = s.db.User.GetUserFriends(s.ctx, stuId); err != nil {
 			return nil, fmt.Errorf("service.GetUserFriendsIdDB: %w", err)
 		}
@@ -44,29 +41,45 @@ func (s *UserService) GetFriendList(stuId string) ([]*model.UserFriendInfo, erro
 		}})
 	}
 	friendList := make([]*model.UserFriendInfo, 0, len(friendRelation))
+	if len(friendRelation) == 0 {
+		return friendList, nil
+	}
+	// 批量获取好友信息: 先一次 MGET 批量查缓存, 未命中的再一次 SQL 批量查库, 避免逐个好友的 N+1 查询
+	friendIds := make([]string, 0, len(friendRelation))
 	for _, relation := range friendRelation {
-		if s.cache.IsKeyExist(s.ctx, relation.FriendId) {
-			stuInfo, err := s.cache.User.GetStuInfoCache(s.ctx, relation.FriendId)
-			if err != nil {
-				return nil, fmt.Errorf("service.GetFriendList: %w", err)
-			}
-			friendList = append(friendList, pack.BuildFriendInfoResp(stuInfo, relation))
-			continue
+		friendIds = append(friendIds, relation.FriendId)
+	}
+	stuInfoMap, err := s.cache.User.GetStuInfosCache(s.ctx, friendIds)
+	if err != nil {
+		return nil, fmt.Errorf("service.GetFriendList: %w", err)
+	}
+	missedIds := make([]string, 0, len(friendIds))
+	for _, friendId := range friendIds {
+		if _, ok := stuInfoMap[friendId]; !ok {
+			missedIds = append(missedIds, friendId)
 		}
-		// 查询数据库是否存入此学生信息
-		stuExist, stuInfo, err := s.db.User.GetStudentById(s.ctx, relation.FriendId)
+	}
+	if len(missedIds) > 0 {
+		students, err := s.db.User.GetStudentsByIds(s.ctx, missedIds)
 		if err != nil {
 			return nil, fmt.Errorf("service.GetFriendList: %w", err)
 		}
-		if !stuExist { // 如果数据库也没有该学生信息 则只能模糊返回了
-			friendList = append(friendList, &model.UserFriendInfo{
-				StuId:     relation.FriendId,
-				OrderSeq:  relation.OrderSeq,
-				CreatedAt: relation.CreatedAt.Unix(),
-			})
+		for _, stuInfo := range students {
+			stuInfoMap[stuInfo.StuId] = stuInfo
+		}
+	}
+	// 按好友关系原顺序组装返回结果
+	for _, relation := range friendRelation {
+		if stuInfo, ok := stuInfoMap[relation.FriendId]; ok {
+			friendList = append(friendList, pack.BuildFriendInfoResp(stuInfo, relation))
 			continue
 		}
-		friendList = append(friendList, pack.BuildFriendInfoResp(stuInfo, relation))
+		// 缓存和数据库都没有该学生信息 则只能模糊返回了
+		friendList = append(friendList, &model.UserFriendInfo{
+			StuId:     relation.FriendId,
+			OrderSeq:  relation.OrderSeq,
+			CreatedAt: relation.CreatedAt.Unix(),
+		})
 	}
 	return friendList, nil
 }

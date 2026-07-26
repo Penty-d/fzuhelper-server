@@ -25,6 +25,7 @@ import (
 
 	"github.com/west2-online/fzuhelper-server/api/rpc"
 	"github.com/west2-online/fzuhelper-server/kitex_gen/user"
+	metainfoContext "github.com/west2-online/fzuhelper-server/pkg/base/context"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 	"github.com/west2-online/jwch"
 	"github.com/west2-online/yjsy"
@@ -41,19 +42,18 @@ func LoginTool() mcpgoserver.ServerTool {
 			mcp.WithDescription("Use this tool when the user wants to log into the educational system. "+
 				"Call this when: user mentions logging in, needs to authenticate, "+
 				"or when other tools fail due to no active session. "+
-				"If JWCH_STUDENT_ID and JWCH_PASSWORD environment variables are set, "+
-				"this happens automatically on startup. Returns success message on successful login."),
+				"Returns success message on successful login."),
 			mcp.WithString("student_id",
 				mcp.Required(),
-				mcp.Description("Student ID for authentication (optional if FZUHELPER_STUDENT_ID env var is set)"),
+				mcp.Description("Student ID for authentication"),
 			),
 			mcp.WithString("password",
 				mcp.Required(),
-				mcp.Description("Password for authentication (optional if FZUHELPER_STUDENT_PASSWORD env var is set)"),
+				mcp.Description("Password for authentication"),
 			),
 			mcp.WithString("student_type",
 				mcp.Description("StudentType for authentication. Defaults to \"1\" (Undergraduate student). "+
-					"Set \"2\" for Postgraduate(optional if FZUHELPER_STUDENT_TYPE env var is set)"),
+					"Set \"2\" for Postgraduate"),
 			),
 		),
 		Handler: handleLogin,
@@ -87,10 +87,10 @@ func handleLogin(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 		studentType = "1" // 默认本科生
 	}
 	if studentID == "" {
-		return mcp.NewToolResultError("student_id is required (provide as parameter or set JWCH_STUDENT_ID environment variable)"), nil
+		return mcp.NewToolResultError("student_id is required"), nil
 	}
 	if password == "" {
-		return mcp.NewToolResultError("password is required (provide as parameter or set JWCH_PASSWORD environment variable)"), nil
+		return mcp.NewToolResultError("password is required"), nil
 	}
 
 	var id, cookies string
@@ -127,10 +127,12 @@ func handleCheckSession(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	var err error
 	if utils.IsGraduate(auth.UserID) {
 		// 研究生：使用 yjsy 库
-		err = yjsy.NewStudent().WithLoginData(utils.ParseCookies(auth.UserCookies)).CheckSession()
+		id := metainfoContext.ExtractIDFromIdentifier(auth.UserID)
+		err = yjsy.NewStudent().WithUser(id, "").WithLoginData(utils.ParseCookies(auth.UserCookies)).CheckSession()
 	} else {
 		// 本科生：使用 jwch 库
-		id := utils.RemoveUndergraduatePrefix(auth.UserID)
+		// 使用带长度校验的 ExtractIDFromIdentifier，避免过短的 user_id 触发越界 panic
+		id := metainfoContext.ExtractIDFromIdentifier(auth.UserID)
 		err = jwch.NewStudent().WithUser(id, "").WithLoginData(auth.UserID, utils.ParseCookies(auth.UserCookies)).CheckSession()
 	}
 

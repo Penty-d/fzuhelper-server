@@ -27,6 +27,11 @@ import (
 )
 
 func normalizeCourseLocation(location string, isGraduate bool) string {
+	publicLanguageLocation := strings.TrimPrefix(location, "旗山")
+	if remark, ok := constants.CourseLocationRemarks[publicLanguageLocation]; ok {
+		return publicLanguageLocation + "（" + remark + "）"
+	}
+
 	if isGraduate {
 		return location
 	}

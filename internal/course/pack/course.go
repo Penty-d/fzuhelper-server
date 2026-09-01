@@ -28,9 +28,6 @@ import (
 )
 
 func normalizeCourseLocation(location string, isGraduate bool) string {
-	if remark, ok := constants.CourseLocationRemarks[location]; ok {
-		location = fmt.Sprintf("%s（%s）", location, remark)
-	}
 
 	if isGraduate {
 		return location
@@ -38,6 +35,10 @@ func normalizeCourseLocation(location string, isGraduate bool) string {
 
 	if location == "旗山物理实验教学中心" || location == "铜盘教学楼" || strings.HasPrefix(location, "晋江校区") {
 		return location
+	}
+
+	if remark, ok := constants.CourseLocationRemarks[location]; ok {
+		location = fmt.Sprintf("%s（%s）", location, remark)
 	}
 
 	// 非研究生 去除 {铜盘,旗山,晋江} 前缀

@@ -17,6 +17,7 @@ limitations under the License.
 package pack
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
@@ -28,7 +29,7 @@ import (
 
 func normalizeCourseLocation(location string, isGraduate bool) string {
 	if remark, ok := constants.CourseLocationRemarks[location]; ok {
-		location = location + "（" + remark + "）"
+		location = fmt.Sprintf("%s（%s）", location, remark)
 	}
 
 	if isGraduate {

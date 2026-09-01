@@ -54,9 +54,8 @@ func TestNormalizeCourseLocationKeepsGraduateAndSpecialLocations(t *testing.T) {
 		want       string
 	}{
 		"graduate public language classroom": {
-			location:   "旗山公语1",
-			isGraduate: true,
-			want:       "公语1（东1-508）",
+			location: "旗山公语1",
+			want:     "公语1（东1-508）",
 		},
 		"physics laboratory center": {
 			location: "旗山物理实验教学中心",

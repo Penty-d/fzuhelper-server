@@ -28,7 +28,7 @@ import (
 
 func normalizeCourseLocation(location string, isGraduate bool) string {
 	if remark, ok := constants.CourseLocationRemarks[location]; ok {
-		return location + "（" + remark + "）"
+		location = location + "（" + remark + "）"
 	}
 
 	if isGraduate {

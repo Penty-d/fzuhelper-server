@@ -28,7 +28,6 @@ import (
 )
 
 func normalizeCourseLocation(location string, isGraduate bool) string {
-
 	if isGraduate {
 		return location
 	}

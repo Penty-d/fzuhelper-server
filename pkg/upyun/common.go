@@ -17,15 +17,10 @@ limitations under the License.
 package upyun
 
 import (
-	"strings"
-
-	"github.com/west2-online/fzuhelper-server/config"
+	cos "github.com/west2-online/fzuhelper-server/pkg/cos"
 )
 
 // GenerateContributorAvatarUrl 生成贡献者头像Url
 func GenerateContributorAvatarUrl(name string) string {
-	return strings.Join([]string{
-		config.UpYun.UssDomain, config.UpYun.AvatarPath,
-		name,
-	}, "")
+	return cos.GenerateContributorAvatarUrl(name)
 }

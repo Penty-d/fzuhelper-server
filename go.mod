@@ -29,7 +29,7 @@ require (
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/segmentio/kafka-go v0.4.50
 	github.com/spf13/viper v1.21.0
-	github.com/upyun/go-sdk/v3 v3.0.4
+	github.com/tencentyun/cos-go-sdk-v5 v0.7.75
 	github.com/west2-online/jwch v0.2.44
 	github.com/west2-online/yjsy v0.0.11
 	go.baoshuo.dev/llmfunc v0.0.2
@@ -49,14 +49,18 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.45.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
+	github.com/clbanning/mxj v1.8.4 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
+	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/hashicorp/go-version v1.8.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.9.2 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/mitchellh/mapstructure v1.4.3 // indirect
+	github.com/mozillazg/go-httpheader v0.2.1 // indirect
 	github.com/paulmach/orb v0.12.0 // indirect
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.18.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect

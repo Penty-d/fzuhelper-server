@@ -14,24 +14,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package upyun
+package cos
 
 import (
-	"github.com/west2-online/fzuhelper-server/kitex_gen/model"
-	cos "github.com/west2-online/fzuhelper-server/pkg/cos"
+	"strings"
+
+	"github.com/west2-online/fzuhelper-server/config"
 )
 
-// GetDir 获取目录下的文件和文件夹
-func GetDir(path string) (*model.UpYunFileDir, error) {
-	return cos.GetDir(path)
-}
-
-// GetDownloadUrl 基于路径获取对应的下载链接
-func GetDownloadUrl(uri string) (string, error) {
-	return cos.GetDownloadUrl(uri)
-}
-
-// UploadFile 上传本地文件到指定路径
-func UploadFile(filepath, ussDir string) error {
-	return cos.UploadFile(filepath, ussDir)
+// GenerateContributorAvatarUrl 生成贡献者头像Url(EO 加速域名)
+func GenerateContributorAvatarUrl(name string) string {
+	return strings.Join([]string{
+		config.Cos.DownloadDomain, config.Cos.AvatarPath,
+		name,
+	}, "")
 }

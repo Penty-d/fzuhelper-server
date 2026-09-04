@@ -17,126 +17,30 @@ limitations under the License.
 package upyun
 
 import (
-	"bytes"
-	"crypto/hmac"
-	"crypto/md5"
-	"crypto/sha1"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"strings"
-	"time"
-
-	"github.com/west2-online/fzuhelper-server/config"
-	"github.com/west2-online/fzuhelper-server/pkg/errno"
-	"github.com/west2-online/fzuhelper-server/pkg/logger"
+	cos "github.com/west2-online/fzuhelper-server/pkg/cos"
 )
 
-// gmtDate returns the current date and time in GMT format.
-func gmtDate() string {
-	return time.Now().UTC().Format("Mon, 02 Jan 2006 15:04:05 GMT")
-}
-
-// SignStr generates the signature string for authentication.
+// SignStr 根据 policy 生成 COS PostObject 的 authorization 串
 func SignStr(policy string) string {
-	// Generate MD5 hash of the password
-	md5Hasher := md5.New()
-	md5Hasher.Write([]byte(config.VersionUploadService.Pass))
-	key := fmt.Sprintf("%x", md5Hasher.Sum(nil))
-
-	gmtdate := gmtDate()
-	var msg string
-	if policy == "" {
-		msg = "POST" + "&/" + config.VersionUploadService.Bucket + "&" + gmtdate
-	} else {
-		msg = "POST" + "&/" + config.VersionUploadService.Bucket + "&" + gmtdate + "&" + policy
-	}
-
-	// Generate HMAC-SHA1 hash
-	hmacHasher := hmac.New(sha1.New, []byte(key))
-	hmacHasher.Write([]byte(msg))
-	signature := base64.StdEncoding.EncodeToString(hmacHasher.Sum(nil))
-
-	return "UPYUN " + config.VersionUploadService.Operator + ":" + signature
+	return cos.SignStr(policy)
 }
 
-// GetPolicy generates the policy string for requests.
+// GetPolicy 生成 COS PostObject 表单上传的 policy(base64)
 func GetPolicy() string {
-	gmtdate := gmtDate()
-	expiration := time.Now().Unix() + config.VersionUploadService.TokenTimeout
-	// expiration := timeout
-	policy := map[string]interface{}{
-		"bucket":     config.VersionUploadService.Bucket,
-		"save-key":   config.VersionUploadService.Path,
-		"expiration": expiration,
-		"date":       gmtdate,
-	}
-
-	policyJSON, _ := json.Marshal(policy)
-	return base64.StdEncoding.EncodeToString(policyJSON)
+	return cos.GetPolicy()
 }
 
-// URlUploadFile 又拍云上传文件
+// URlUploadFile 上传文件到 COS
 func URlUploadFile(file []byte, url string) error {
-	body := bytes.NewReader(file)
-	req, err := http.NewRequest("PUT", url, body)
-	if err != nil {
-		return err
-	}
-	req.SetBasicAuth(config.UpYun.Operator, config.UpYun.Password)
-	req.Header.Add("Date", time.Now().UTC().Format(http.TimeFormat))
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Warnf("URlUploadFile : failed to close response body: %v", err)
-		}
-	}(res.Body)
-	if res.StatusCode != http.StatusOK {
-		return errno.UpcloudError
-	}
-	return nil
+	return cos.URlUploadFile(file, url)
 }
 
-// URlGetFile 又拍云下载文件
+// URlGetFile 从 COS 下载文件
 func URlGetFile(url string) (*[]byte, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.SetBasicAuth(config.UpYun.Operator, config.UpYun.Password)
-	req.Header.Add("Date", time.Now().UTC().Format(http.TimeFormat))
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Warnf("URlGetFile : failed to close response body: %v", err)
-		}
-	}(res.Body)
-
-	if res.StatusCode != http.StatusOK {
-		return nil, errno.UpcloudError
-	}
-
-	file, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, errno.UpcloudError
-	}
-	return &file, nil
+	return cos.URlGetFile(url)
 }
 
-// JoinFileName 生成文件名字
+// JoinFileName 生成文件下载 url
 func JoinFileName(fileName string) string {
-	return strings.Join([]string{
-		config.UpYun.UssDomain, config.UpYun.Path,
-		fileName,
-	}, "")
+	return cos.JoinFileName(fileName)
 }

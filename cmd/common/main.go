@@ -275,9 +275,7 @@ func syncContributorTask(ctx context.Context) error {
 }
 
 const (
-	baseUrl    = "https://avatars.githubusercontent.com/u/"
-	uploadBase = "http://v0.api.upyun.com/fzuhelper-filedown"
-	readBase   = "https://download.w2fzu.com"
+	baseUrl = "https://avatars.githubusercontent.com/u/"
 )
 
 func uploadAvatar(avatarUrl string, name string) (string, error) {
@@ -290,7 +288,7 @@ func uploadAvatar(avatarUrl string, name string) (string, error) {
 		// parsedUrl.Path[3:]会去掉 `/u/`
 		newAvatarUrl := fmt.Sprintf(constants.AvatarProxy, parsedUrl.Path[3:])
 
-		// 2.下载图片并上传又拍云
+		// 2.下载图片并上传 COS(GenerateContributorAvatarUrl 生成的即 EO 加速域名的最终地址)
 		resp, err := http.Get(newAvatarUrl)
 		if err != nil {
 			return "", fmt.Errorf("failed to download avatar from %s: %w", avatarUrl, err)
@@ -299,7 +297,6 @@ func uploadAvatar(avatarUrl string, name string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to read avatar image: %w", err)
 		}
-		// 生成上传用Url
 		newAvatarUrl = upyun.GenerateContributorAvatarUrl(name)
 		err = upyun.URlUploadFile(imgData, newAvatarUrl)
 		if err != nil {
@@ -307,8 +304,7 @@ func uploadAvatar(avatarUrl string, name string) (string, error) {
 		}
 		_ = resp.Body.Close()
 
-		// 3.最终换成加速域名
-		return strings.Replace(newAvatarUrl, uploadBase, readBase, 1), nil
+		return newAvatarUrl, nil
 	}
 
 	return "", nil

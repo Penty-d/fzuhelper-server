@@ -129,15 +129,19 @@ func keyTimeFromPolicy(policy string) string {
 		return ""
 	}
 
+	// conditions 是混合类型数组(对象与 ["starts-with",...] 数组并存),需逐条解析
 	var p struct {
-		Conditions []map[string]string `json:"conditions"`
+		Conditions []json.RawMessage `json:"conditions"`
 	}
 	if err := json.Unmarshal(policyJSON, &p); err != nil {
 		return ""
 	}
-	for _, cond := range p.Conditions {
-		if v, ok := cond["q-sign-time"]; ok {
-			return v
+	for _, raw := range p.Conditions {
+		var cond map[string]string
+		if err := json.Unmarshal(raw, &cond); err == nil {
+			if v, ok := cond["q-sign-time"]; ok {
+				return v
+			}
 		}
 	}
 	return ""

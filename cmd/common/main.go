@@ -37,6 +37,7 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/base"
 	baseserver "github.com/west2-online/fzuhelper-server/pkg/base/server"
 	"github.com/west2-online/fzuhelper-server/pkg/cache"
+	"github.com/west2-online/fzuhelper-server/pkg/cos"
 	"github.com/west2-online/fzuhelper-server/pkg/constants"
 	"github.com/west2-online/fzuhelper-server/pkg/db"
 	"github.com/west2-online/fzuhelper-server/pkg/db/model"
@@ -45,7 +46,6 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/taskqueue"
 	"github.com/west2-online/fzuhelper-server/pkg/tracing"
 	"github.com/west2-online/fzuhelper-server/pkg/umeng"
-	"github.com/west2-online/fzuhelper-server/pkg/upyun"
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 	"github.com/west2-online/jwch"
 )
@@ -297,8 +297,8 @@ func uploadAvatar(avatarUrl string, name string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to read avatar image: %w", err)
 		}
-		newAvatarUrl = upyun.GenerateContributorAvatarUrl(name)
-		err = upyun.URlUploadFile(imgData, newAvatarUrl)
+		newAvatarUrl = cos.GenerateContributorAvatarUrl(name)
+		err = cos.URlUploadFile(imgData, newAvatarUrl)
 		if err != nil {
 			return "", fmt.Errorf("failed to upload avatar to image host: %w", err)
 		}

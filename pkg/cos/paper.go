@@ -97,15 +97,15 @@ func GetDownloadUrl(uri string) (string, error) {
 	}
 
 	etime := time.Now().Unix() + config.Cos.TokenTimeout
-	rand, uid := "0", "0"
+	randStr, uidStr := "0", "0"
 	sign := utils.MD5(strings.Join([]string{
-		uri,                       // 参与签名的 uri 为未编码的原始路径
+		uri, // 参与签名的 uri 为未编码的原始路径
 		strconv.FormatInt(etime, 10),
-		rand,
-		uid,
+		randStr,
+		uidStr,
 		config.Cos.TokenSecret,
 	}, "-"))
-	return fmt.Sprintf("%s?sign=%s-%d-%s-%s", base, sign, etime, rand, uid), nil
+	return fmt.Sprintf("%s?sign=%s-%d-%s-%s", base, sign, etime, randStr, uidStr), nil
 }
 
 // UploadFile 上传本地文件到指定路径

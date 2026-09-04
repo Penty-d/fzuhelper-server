@@ -22,7 +22,7 @@ import (
 	"github.com/west2-online/fzuhelper-server/config"
 )
 
-// GenerateContributorAvatarUrl 生成贡献者头像Url(EO 加速域名)
+// GenerateContributorAvatarUrl 生成贡献者头像Url
 func GenerateContributorAvatarUrl(name string) string {
 	return strings.Join([]string{
 		config.Cos.DownloadDomain, config.Cos.AvatarPath,

@@ -31,12 +31,10 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/utils"
 )
 
-// listMaxKeys COS 单次列举的最大条数(上限 1000),超过则分页拉取
+// listMaxKeys COS 单次列举条数上限
 const listMaxKeys = 1000
 
-// GetDir 获取目录下的文件和文件夹(仅一层)。
-// 返回的名字为相对该目录的裸名字,与原又拍云实现保持一致;
-// 以 "__" 开头的文件夹(如待审核目录)会被过滤。
+// GetDir 获取目录下的文件和文件夹
 func GetDir(path string) (*model.UpYunFileDir, error) {
 	prefix := objectKey(path)
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
@@ -85,11 +83,8 @@ func GetDir(path string) (*model.UpYunFileDir, error) {
 	return fileDir, nil
 }
 
-// GetDownloadUrl 基于路径获取对应的下载链接(走 EO 加速域名,不直连 COS 预签名链接)。
-// 配置了 token-secret 时按 EO TypeA Token 鉴权拼接防盗链参数:
-// sign = md5("<uri>-<timestamp>-<rand>-<uid>-<PrivateKey>"),
-// 即 https://<domain>/<uri>?sign=<md5>-<timestamp>-<rand>-<uid>
-// token-secret 留空则返回未签名链接(EO 侧未开启 Token 鉴权时使用)。
+// GetDownloadUrl 基于路径获取对应的下载链接
+// 配置了 token-secret 时按 EO TypeA Token 鉴权拼接防盗链参数,留空则不签名
 func GetDownloadUrl(uri string) (string, error) {
 	base := config.Cos.DownloadDomain + utils.UriEncode(uri)
 	if config.Cos.TokenSecret == "" {

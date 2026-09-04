@@ -34,7 +34,7 @@ import (
 	"github.com/west2-online/fzuhelper-server/pkg/logger"
 )
 
-// JoinFileName 生成文件下载 url(EO 加速域名 + 配置路径 + 文件名)
+// JoinFileName 生成文件下载 url
 func JoinFileName(fileName string) string {
 	return strings.Join([]string{
 		config.Cos.DownloadDomain, config.Cos.Path,
@@ -42,7 +42,7 @@ func JoinFileName(fileName string) string {
 	}, "")
 }
 
-// URlUploadFile 上传文件到 COS,url 为 JoinFileName 生成的下载地址,内部解析出对象 key
+// URlUploadFile 上传文件到 COS
 func URlUploadFile(file []byte, url string) error {
 	key, err := keyFromURL(url)
 	if err != nil {
@@ -56,7 +56,7 @@ func URlUploadFile(file []byte, url string) error {
 	return nil
 }
 
-// URlGetFile 从 COS 下载文件(服务端直连 COS,不走 EO)
+// URlGetFile 从 COS 下载文件
 func URlGetFile(url string) (*[]byte, error) {
 	key, err := keyFromURL(url)
 	if err != nil {
@@ -80,8 +80,7 @@ func URlGetFile(url string) (*[]byte, error) {
 	return &file, nil
 }
 
-// GetPolicy 生成 COS PostObject 表单上传的 policy(base64)。
-// 供 Android 客户端直传使用,返回值语义与原又拍云实现保持一致(仍为 base64 策略串)。
+// GetPolicy 生成 COS PostObject 表单上传的 policy(base64)
 func GetPolicy() string {
 	start := time.Now().Unix()
 	end := start + config.CosUpload.TokenTimeout
@@ -102,12 +101,7 @@ func GetPolicy() string {
 	return base64.StdEncoding.EncodeToString(policyJSON)
 }
 
-// SignStr 根据policy生成 COS PostObject 的 authorization 串,格式为
-// "q-sign-algorithm=sha1&q-ak=...&q-key-time=...&q-sign-time=...&q-signature=...",
-// 客户端将其按 '&' 拆分后作为表单字段随 policy 一并提交。
-// 签名算法:signKey = hex(hmac_sha1(SecretKey, keyTime)),
-// stringToSign = "sha1\n<keyTime>\n<sha1hex(policy)>\n",
-// signature = hex(hmac_sha1(signKey, stringToSign))。
+// SignStr 根据policy生成 COS PostObject 的 authorization 串
 func SignStr(policy string) string {
 	keyTime := keyTimeFromPolicy(policy)
 	signKey := hmacSHA1Hex(config.CosUpload.SecretKey, keyTime)
@@ -128,8 +122,7 @@ func SignStr(policy string) string {
 	}, "&")
 }
 
-// keyTimeFromPolicy 从 base64 编码的 policy 中解析 q-sign-time,
-// 保证签名与 policy 中的条件严格一致
+// keyTimeFromPolicy 从 policy 中解析 q-sign-time,保证签名与 policy 条件一致
 func keyTimeFromPolicy(policy string) string {
 	policyJSON, err := base64.StdEncoding.DecodeString(policy)
 	if err != nil {

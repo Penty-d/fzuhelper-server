@@ -14,8 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package cos 封装腾讯云 COS 对象存储的通用操作。
-// 注意:COS 没有目录概念,对象 key 一律不带前导 '/',与桶内数据风格保持一致。
+// Package cos 腾讯云 COS 对象存储操作封装
 package cos
 
 import (
@@ -69,7 +68,7 @@ func newClient() *tencentyun.Client {
 	})
 }
 
-// objectKey 将 URL 路径或配置路径转换为 COS 对象 key(去掉前导 '/')
+// objectKey 转换为 COS 对象 key(去掉前导 '/')
 func objectKey(path string) string {
 	return strings.TrimPrefix(path, "/")
 }

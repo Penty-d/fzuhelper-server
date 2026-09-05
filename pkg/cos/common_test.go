@@ -14,18 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package upyun
+package cos
 
 import (
-	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/west2-online/fzuhelper-server/config"
 )
 
-// GenerateContributorAvatarUrl 生成贡献者头像Url
-func GenerateContributorAvatarUrl(name string) string {
-	return strings.Join([]string{
-		config.UpYun.UssDomain, config.UpYun.AvatarPath,
-		name,
-	}, "")
+func TestGenerateContributorAvatarUrl(t *testing.T) {
+	if err := config.InitForTest("common"); err != nil {
+		t.Fatalf("TestGenerateContributorAvatarUrl: init config failed: %v", err)
+	}
+
+	result := GenerateContributorAvatarUrl("penty")
+	assert.Equal(t, config.Cos.DownloadDomain+config.Cos.AvatarPath+"penty", result)
 }

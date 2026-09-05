@@ -14,18 +14,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package service
+package cos
 
 import (
-	"fmt"
+	"strings"
 
-	"github.com/west2-online/fzuhelper-server/pkg/cos"
+	"github.com/west2-online/fzuhelper-server/config"
 )
 
-func (s *CommonService) GetUserAgreement() (*[]byte, error) {
-	jsonBytes, err := cos.URlGetFile(cos.JoinFileName(userAgreementFileName))
-	if err != nil {
-		return nil, fmt.Errorf("CommonService.GetUserAgreement error:%w", err)
-	}
-	return jsonBytes, nil
+// GenerateContributorAvatarUrl 生成贡献者头像Url
+func GenerateContributorAvatarUrl(name string) string {
+	return strings.Join([]string{
+		config.Cos.DownloadDomain, config.Cos.AvatarPath,
+		name,
+	}, "")
 }

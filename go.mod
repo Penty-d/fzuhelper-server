@@ -13,7 +13,6 @@ require (
 	github.com/cloudwego/gopkg v0.2.0
 	github.com/cloudwego/hertz v0.10.4
 	github.com/cloudwego/kitex v0.16.1
-	github.com/cloudwego/netpoll v0.7.2
 	github.com/elastic/go-elasticsearch/v7 v7.17.10
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
@@ -50,6 +49,7 @@ require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/clbanning/mxj v1.8.4 // indirect
+	github.com/cloudwego/netpoll v0.7.2 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect

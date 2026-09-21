@@ -432,6 +432,13 @@ func TestGetCalendar(t *testing.T) {
 			name:           "success",
 			url:            "/api/v1/jwch/course/calendar/token",
 			mockToken:      "token123",
+			mockLoginData:  &model.LoginData{Id: "000002602400001"},
+			expectContains: `{"code":"10000","message":"Success","data":"token123"}`,
+		},
+		{
+			name:           "success",
+			url:            "/api/v1/jwch/course/calendar/token",
+			mockToken:      "token123",
 			mockLoginData:  &model.LoginData{Id: "202400001"},
 			expectContains: `{"code":"10000","message":"Success","data":"token123"}`,
 		},

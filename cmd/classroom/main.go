@@ -19,11 +19,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"strconv"
 	"time"
 
 	"github.com/cloudwego/kitex/server"
-	"github.com/cloudwego/netpoll"
 	etcd "github.com/kitex-contrib/registry-etcd"
 	"golang.org/x/sync/errgroup"
 
@@ -67,7 +67,7 @@ func main() {
 		logger.Fatalf("Classroom: get available port failed: %v", err)
 	}
 	logger.Infof("Classroom: listen addr: %v", listenAddr)
-	addr, err := netpoll.ResolveTCPAddr("tcp", listenAddr)
+	addr, err := net.ResolveTCPAddr("tcp", listenAddr)
 	if err != nil {
 		logger.Fatalf("Classroom: listen addr failed %v", err)
 	}
